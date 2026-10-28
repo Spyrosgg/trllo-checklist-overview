@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>All checklist items</title>
+  <link rel="stylesheet" href="./overview.css" />
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+</head>
+<body>
+  <header class="toolbar">
+    <p id="summary" class="summary" aria-live="polite">Loading checklists…</p>
+    <div class="actions">
+      <button id="btn-export" class="export" type="button" disabled
+        title="Download what is shown as an Excel file">Export to Excel</button>
+      <div class="toggle" role="group" aria-label="Completed items">
+        <button id="btn-show" type="button" aria-pressed="true" disabled>Show completed</button>
+        <button id="btn-hide" type="button" aria-pressed="false" disabled>Hide completed</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="content" class="content"></main>
+
+  <script src="./config.js"></script>
+  <script src="./checklist-model.js"></script>
+  <script src="./xlsx-export.js"></script>
+  <script src="./overview.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "Checklist Overview",
+  "details": "See every checklist item from every card on one page, with buttons to show or hide completed items.",
+  "icon": {
+    "url": "./images/icon.svg"
+  },
+  "author": "your-team",
+  "capabilities": [
+    "board-buttons"
+  ],
+  "connectors": {
+    "iframe": {
+      "url": "./index.html"
+    }
+  }
+}
