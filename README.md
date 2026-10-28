@@ -63,7 +63,22 @@ the whole folder as it is.
 4. Open a board, go to **Power-Ups > Add Power-Ups > Custom**, and add it.
 5. Click **Checklists** in the board's top bar.
 
-If you change files after hosting them, refresh the board (Trello caches the connector).
+## Updating
+
+Upload **every file** in the folder again, including any new ones (version 1.1 added
+`xlsx-export.js`), then reload the board with a hard refresh (Ctrl+Shift+R, or Cmd+Shift+R
+on a Mac) and reopen **Checklists**. Trello and your host both cache these files, and some
+hosts, GitHub Pages for one, can take a few minutes to publish.
+
+To check you are on the latest files, scroll to the bottom of the Checklists page. It shows
+`Checklist Overview 1.1`. If that line is missing or shows an older number, you are still
+being served older files. If you ever edit the code, change the `?v=` number on the script
+and style links in `index.html` and `overview.html`, and in `client.js`, so browsers fetch
+the new files.
+
+**Where the buttons are:** *Checklists* is on the board's top bar. **Export to Excel**,
+*Show completed* and *Hide completed* are inside the page that button opens, at the top
+right.
 
 ## If the page asks you to connect
 

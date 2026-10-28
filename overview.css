@@ -256,6 +256,14 @@ body {
   border: 0;
 }
 
+.version {
+  padding: 0 24px 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.8;
+}
+
 /* Status and empty states */
 .panel {
   margin: 64px auto 0;

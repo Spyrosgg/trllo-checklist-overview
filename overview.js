@@ -27,7 +27,9 @@ var els = {
   content: document.getElementById('content'),
   show: document.getElementById('btn-show'),
   hide: document.getElementById('btn-hide'),
-  exportBtn: document.getElementById('btn-export')
+  // If an older overview.html is served (cached or only partly uploaded), the button
+  // is missing. A detached stand-in keeps the rest of the page working.
+  exportBtn: document.getElementById('btn-export') || document.createElement('button')
 };
 
 // ---------------------------------------------------------------------------
