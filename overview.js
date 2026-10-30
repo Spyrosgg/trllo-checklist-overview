@@ -72,7 +72,8 @@ function fetchChecklistsViaRest() {
     if (!token) throw restError('unauthorized');
 
     var url = 'https://api.trello.com/1/boards/' + encodeURIComponent(boardId) + '/checklists' +
-      '?checkItems=all&checkItem_fields=name,state,pos&fields=name,idCard,pos' +
+      // checkItem_fields=all so each item's due date comes back with it.
+      '?checkItems=all&checkItem_fields=all&fields=name,idCard,pos' +
       '&key=' + encodeURIComponent(config.appKey) +
       '&token=' + encodeURIComponent(token);
 
@@ -194,6 +195,30 @@ function openCard(card) {
   });
 }
 
+// Due dates are stored by Trello in UTC; people read them in their own time zone
+// and language, so the browser's settings do the formatting.
+function formatDueShort(iso) {
+  var d = new Date(iso);
+  var opts = { day: 'numeric', month: 'short' };
+  // Leave the year out for dates this year, so most chips stay short.
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(undefined, opts);
+}
+
+function formatDueFull(iso) {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function renderDue(item) {
+  var overdue = ChecklistModel.isOverdue(item, Date.now());
+  var chip = el('time', 'due' + (overdue ? ' is-overdue' : ''));
+  chip.setAttribute('datetime', item.due);
+  chip.title = (overdue ? 'Overdue: ' : 'Due: ') + formatDueFull(item.due);
+  chip.appendChild(el('span', 'sr-only', overdue ? 'Overdue: ' : 'Due: '));
+  chip.appendChild(document.createTextNode(formatDueShort(item.due)));
+  return chip;
+}
+
 function renderCard(card) {
   var wrap = el('article', 'card');
 
@@ -221,6 +246,7 @@ function renderCard(card) {
       li.appendChild(tick);
       li.appendChild(el('span', 'sr-only', done ? 'Completed: ' : 'Not completed: '));
       li.appendChild(el('span', 'item-name', item.name));
+      if (item.due) li.appendChild(renderDue(item));
       ul.appendChild(li);
     });
     block.appendChild(ul);
@@ -437,9 +463,10 @@ function exportToExcel() {
     var bytes = XlsxExport.build({
       sheetName: state.hideCompleted ? 'Open checklist items' : 'Checklist items',
       headers: table.headers,
-      widths: [18, 30, 24, 60, 12, 42],
+      widths: [18, 30, 24, 60, 18, 12, 42],
       wrap: [1, 2, 3],   // Card, Checklist, Item
-      links: [5],        // Card link
+      dates: [4],        // Due date
+      links: [6],        // Card link
       rows: table.rows
     });
     download(bytes, ChecklistModel.exportFileName(state.boardName, state.hideCompleted));

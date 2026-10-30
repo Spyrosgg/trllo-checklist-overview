@@ -10,8 +10,13 @@
  *     widths:    [18, 32, ...],          // characters
  *     wrap:      [3],                    // column indexes that wrap long text
  *     links:     [5],                    // column indexes whose text is a URL
+ *     dates:     [4],                    // column indexes holding ISO date strings (or Dates)
  *     rows:      [['To do', 'Card', ...], ...]
  *   }) -> Uint8Array
+ *
+ * Date cells are real Excel dates, so they sort and filter as dates. Excel has no
+ * time zones, so the date and time written are the ones in the viewer's own time
+ * zone, which is what they see in Trello.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
@@ -29,7 +34,7 @@
   var XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
   // Cell style ids, matching the order of <cellXfs> in STYLES below.
-  var STYLE = { header: 1, body: 2, wrap: 3, link: 4 };
+  var STYLE = { header: 1, body: 2, wrap: 3, link: 4, date: 5 };
 
   // ---- XML helpers ---------------------------------------------------------
 
@@ -72,6 +77,18 @@
     return /^https?:\/\//i.test(s);
   }
 
+  // Excel stores a date as days since 30 Dec 1899, with the time as a fraction of
+  // a day. Built from the date's local parts, so the cell shows local time.
+  // Returns null for anything that is not a readable date.
+  function excelSerial(value) {
+    if (value == null || value === '') return null;
+    var d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return null;
+    var days = Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000) + 25569;
+    var seconds = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    return days + seconds / 86400;
+  }
+
   // ---- Fixed parts of the package -----------------------------------------
 
   var CONTENT_TYPES = XML_HEAD +
@@ -96,6 +113,7 @@
 
   var STYLES = XML_HEAD +
     '<styleSheet xmlns="' + NS_MAIN + '">' +
+    '<numFmts count="1"><numFmt numFmtId="164" formatCode="dd\\ mmm\\ yyyy\\ hh:mm"/></numFmts>' +
     '<fonts count="3">' +
       '<font><sz val="11"/><name val="Calibri"/><family val="2"/></font>' +
       '<font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font>' +
@@ -111,12 +129,13 @@
       '<border><left/><right/><top/><bottom style="thin"><color rgb="FFDFE1E6"/></bottom><diagonal/></border>' +
     '</borders>' +
     '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-    '<cellXfs count="5">' +
+    '<cellXfs count="6">' +
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
       '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>' +
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top"/></xf>' +
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
       '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="top"/></xf>' +
+      '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="left" vertical="top"/></xf>' +
     '</cellXfs>' +
     '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
     '</styleSheet>';
@@ -135,6 +154,7 @@
     var widths = opts.widths || [];
     var wrap = opts.wrap || [];
     var links = opts.links || [];
+    var dates = opts.dates || [];
     var lastCol = colName(Math.max(headers.length, 1) - 1);
     var lastRow = rows.length + 1;
 
@@ -173,6 +193,15 @@
       xml += '<row r="' + rowNum + '">';
       for (var c = 0; c < headers.length; c++) {
         var ref = colName(c) + rowNum;
+
+        if (dates.indexOf(c) !== -1) {
+          var serial = excelSerial(row[c]);
+          if (serial !== null) {
+            xml += '<c r="' + ref + '" s="' + STYLE.date + '"><v>' + serial + '</v></c>';
+            continue;
+          }
+        }
+
         var text = cellText(row[c]);
         var style = STYLE.body;
 
@@ -339,5 +368,5 @@
     return zip(files, opts.date);
   }
 
-  return { build: build, MIME: MIME, crc32: crc32, colName: colName };
+  return { build: build, MIME: MIME, crc32: crc32, colName: colName, excelSerial: excelSerial };
 });

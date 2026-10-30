@@ -6,14 +6,14 @@ var capabilities = {
   'board-buttons': function () {
     return [{
       icon: {
-        dark: 'https://spyrosgg.github.io/trllo-checklist-overview/images/icon-white.svg',
-        light: 'https://spyrosgg.github.io/trllo-checklist-overview/images/icon-dark.svg'
+        dark: './images/icon-white.svg',
+        light: './images/icon-dark.svg'
       },
       text: 'Checklists',
       callback: function (t) {
         return t.modal({
           title: 'All checklist items',
-          url: './overview.html?v=1.2',
+          url: './overview.html?v=1.3',
           fullscreen: true,
           accentColor: 'blue'
         });

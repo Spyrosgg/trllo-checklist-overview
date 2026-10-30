@@ -23,13 +23,29 @@
     return !!item && item.state === 'complete';
   }
 
+  // A check item's due date arrives as an ISO 8601 string (UTC), or null/absent
+  // when none is set. Anything that is not a readable date becomes null.
+  function normalizeDue(due) {
+    if (typeof due !== 'string' || due === '') return null;
+    return isNaN(Date.parse(due)) ? null : due;
+  }
+
   function normalizeItem(item) {
     return {
       id: item.id,
       name: item.name,
       state: item.state === 'complete' ? 'complete' : 'incomplete',
-      pos: item.pos
+      pos: item.pos,
+      due: normalizeDue(item.due)
     };
+  }
+
+  // Overdue means: open, has a due date, and that moment has passed. Completed
+  // items are never overdue, however old their date.
+  function isOverdue(item, nowMs) {
+    if (!item || isComplete(item) || !item.due) return false;
+    var ms = Date.parse(item.due);
+    return !isNaN(ms) && ms < nowMs;
   }
 
   // Reads checklists out of the card objects returned by t.cards().
@@ -197,7 +213,7 @@
     };
   }
 
-  var EXPORT_HEADERS = ['List', 'Card', 'Checklist', 'Item', 'Status', 'Card link'];
+  var EXPORT_HEADERS = ['List', 'Card', 'Checklist', 'Item', 'Due date', 'Status', 'Card link'];
 
   // Flattens a view (from buildView) into one row per check item, in the same
   // order as the page. Because it reads the view, the Show/Hide completed choice
@@ -213,6 +229,7 @@
               card.name,
               cl.name,
               item.name,
+              item.due || '',      // ISO string; the workbook writer turns it into a real date
               isComplete(item) ? 'Complete' : 'Incomplete',
               card.url || ''
             ]);
@@ -245,6 +262,7 @@
 
   return {
     isComplete: isComplete,
+    isOverdue: isOverdue,
     fromCardData: fromCardData,
     fromRestChecklists: fromRestChecklists,
     buildView: buildView,

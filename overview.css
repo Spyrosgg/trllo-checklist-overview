@@ -7,6 +7,8 @@
   --accent: #0079bf;
   --accent-text: #ffffff;
   --done: #5aac44;
+  --overdue: #ae2e24;
+  --overdue-bg: #ffeceb;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,6 +21,8 @@
     --accent: #579dff;
     --accent-text: #1d2125;
     --done: #4bce97;
+    --overdue: #f87168;
+    --overdue-bg: rgba(248, 113, 104, 0.16);
   }
 }
 
@@ -241,7 +245,31 @@ body {
 }
 
 .item-name {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Due date chip, at the right of the row */
+.due {
+  flex: none;
+  margin: 1px 0 0 auto;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.due.is-overdue {
+  border-color: transparent;
+  background: var(--overdue-bg);
+  color: var(--overdue);
+  font-weight: 600;
 }
 
 .sr-only {

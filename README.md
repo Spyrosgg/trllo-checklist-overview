@@ -9,6 +9,9 @@ of every checklist item on every card, grouped by list, with **Show completed** 
 - Each card shows its own progress (for example `3/5`). The progress stays accurate
   while completed items are hidden.
 - The header shows overall progress, for example `5 of 8 items complete across 3 cards`.
+- Each item's **due date** appears at the right of its row, in your own time zone and
+  language. Open items whose date has passed are shown in red. Hover a date for the exact
+  time.
 - Click a card name to open that card.
 - Your Show/Hide choice is remembered for you on that board.
 - **Export to Excel** downloads what is on screen as an `.xlsx` file (see below).
@@ -43,7 +46,10 @@ nothing is sent anywhere.
   *Hide completed* the file holds open items only. The button is greyed out when
   nothing is shown.
 - **One row per check item**, in the same order as the page, with these columns:
-  `List`, `Card`, `Checklist`, `Item`, `Status` (`Complete` or `Incomplete`), `Card link`.
+  `List`, `Card`, `Checklist`, `Item`, `Due date`, `Status` (`Complete` or `Incomplete`),
+  `Card link`.
+- **Due date is a real Excel date and time**, in your own time zone, so it sorts and
+  filters as a date. Items with no due date leave the cell empty.
 - The header row is frozen and has filter buttons, so you can filter by status or list
   straight away. Long names wrap, and each card link is clickable.
 - The file is named after the board and the date, for example
@@ -134,7 +140,7 @@ hosts, GitHub Pages for one, can take a few minutes to publish. Keep your own `c
 rather than overwriting it with the blank one from the zip.
 
 To check you are on the latest files, scroll to the bottom of the Checklists page. It shows
-`Checklist Overview 1.2`. If that line is missing or shows an older number, you are still
+`Checklist Overview 1.3`. If that line is missing or shows an older number, you are still
 being served older files. If you ever edit the code, change the `?v=` number on the script
 and style links in `index.html` and `overview.html`, and in `client.js`, so browsers fetch
 the new files.
@@ -161,31 +167,37 @@ the key's **Allowed origins**.
 
 **I can see Checklists but not Export to Excel.** The export button is inside the page that
 Checklists opens, at the top right. If it is missing there, you are being served older files:
-scroll to the bottom of that page and look for `Checklist Overview 1.2`.
+scroll to the bottom of that page and look for `Checklist Overview 1.3`.
 
 ## Limits
 
 - Archived cards are not shown.
 - Checklists with no items, and cards with no checklists, are left out.
-- Items are shown in the order Trello stores them. Due dates and assigned members on
-  individual check items are not shown.
+- Items are shown in the order Trello stores them. Assigned members on individual check
+  items are not shown.
+- Due dates are shown in the time zone your browser is set to. Someone in another time zone
+  may see a different day for an item due close to midnight.
 - The list is a snapshot taken when you open the page. Close and reopen it to refresh.
 
 ## What has and has not been tested
 
-Tested: the grouping, ordering, filtering, export and data-checking logic (33 unit tests),
-and the page itself in Chromium with a stand-in for the Trello client (88 checks). That
+Tested: the grouping, ordering, filtering, due-date, export and data-checking logic (42 unit
+tests, run under four time zones), and the page itself in Chromium with a stand-in for the
+Trello client (125 checks). That
 covered showing and hiding completed items, the remembered choice, the empty and
 everything-complete states, Trello leaving checklists out or sharing only some of them, the
 setup and connect flow, rejected fields, failed and refused requests, narrow screens, and
-card names containing HTML. For the export, the page was run in Chromium, the real browser
+card names containing HTML. Due dates were checked for overdue, completed, undated and
+far-future items, in three time zones and two languages, on wide and narrow screens, and
+through the REST path. For the export, the page was run in Chromium, the real browser
 download was captured, and the file was opened with openpyxl and LibreOffice to check the
-rows, statuses, links, frozen header, filters, and awkward text (formulas, HTML, emoji,
+rows, statuses, due dates as real dates, links, frozen header, filters, and awkward text (formulas, HTML, emoji,
 newlines, very long text).
 
 Not tested: a real Trello board, and Microsoft Excel itself. The stand-in for Trello follows
 Trello's documentation, and the REST address, key and token handling follow its REST API
-client guide, but the real authorization window, Trello's responses and whether its iframe
+client guide, but the real authorization window, Trello's responses (in particular that the check-item data includes each item's `due`, as
+Trello's community documentation says) and whether its iframe
 lets the download through are the parts to check first when you install it. Trello
 announced in 2020 that it allows downloads started by a click in Power-Up iframes, which is
 how the export button works.
