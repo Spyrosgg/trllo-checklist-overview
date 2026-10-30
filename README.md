@@ -2,7 +2,8 @@
 
 Adds a **Checklists** button to the top bar of a board. It opens a full-page view
 of every checklist item on every card, grouped by list, with **Show completed** and
-**Hide completed** buttons and an **Export to Excel** button.
+**Hide completed** buttons, an **Export to Excel** button, and a chart of everything that
+is still open, by due date.
 
 - Items are grouped by list (in board order), then card, then checklist, in the same
   order they have on the board.
@@ -12,8 +13,9 @@ of every checklist item on every card, grouped by list, with **Show completed** 
 - Each item's **due date** appears at the right of its row, in your own time zone and
   language. Open items whose date has passed are shown in red. Hover a date for the exact
   time.
+- A **chart of open items by due date** sits above the list (see below).
 - Click a card name to open that card.
-- Your Show/Hide choice is remembered for you on that board.
+- Your Show/Hide choices (completed items, and the chart) are remembered for you on that board.
 - **Export to Excel** downloads what is on screen as an `.xlsx` file (see below).
 - Read-only: it never changes your cards or checklists.
 
@@ -35,6 +37,28 @@ shows no error. Without 5 the page opens but asks for setup instead of listing i
    into `config.js`, and each person has clicked **Connect to Trello** once. Trello does
    not offer checklists to Power-Ups directly, so this page reads them through Trello's
    REST API, which needs the key. See **API key setup** below.
+
+## Chart: open items by due date
+
+A column chart at the top of the page counts every check item that is **not yet complete**,
+across all cards together, by the date it is due. Each check item is one milestone. It
+answers "how much is still to do, and when is it due?".
+
+- **Overdue** (red, with a warning icon): open items whose due date has passed.
+- **Weekly columns**, Monday to Sunday, from the current week to the week of the last due
+  date. Weeks with nothing due show as an empty slot so gaps are visible. If the dates run
+  more than about six months out, the columns switch to months, and anything more than two
+  years away is gathered into **Later**.
+- **No date** (grey): open items with no due date.
+- Hover a column, or Tab to it, to see its exact dates and count.
+- **Show as table**, under the chart, lists the same numbers as text and names every open item
+  under its period: the **item**, its **checklist**, its **card** and its **due date**. Within
+  a period the soonest comes first (the longest overdue first, under Overdue), and items due
+  at the same time follow board order. Click a card name to open that card.
+- The chart always shows **open items only**, whatever Show/Hide completed is set to. It
+  disappears when nothing is open.
+- **Hide chart** collapses it, and the page remembers that for you.
+- Dates are grouped in your browser's time zone. The export does not include the chart.
 
 ## Export to Excel
 
@@ -70,6 +94,7 @@ Check the browser's download or pop-up indicator and allow downloads for trello.
 | `overview.html`, `overview.css`, `overview.js` | The page the button opens |
 | `checklist-model.js` | Grouping, sorting and filtering logic, and the rows for the export (no Trello calls) |
 | `xlsx-export.js` | Writes the `.xlsx` file. No libraries needed |
+| `timeline-chart.js` | Draws the chart of open items (plain SVG). No libraries needed |
 | `config.js` | **Your API key goes here** |
 | `images/` | Button and Power-Up icons |
 
@@ -134,13 +159,13 @@ there really are none.
 ## Updating
 
 Upload **every file** in the folder again, including any new ones (version 1.1 added
-`xlsx-export.js`), then reload the board with a hard refresh (Ctrl+Shift+R, or Cmd+Shift+R
+`xlsx-export.js`, version 1.4 added `timeline-chart.js`), then reload the board with a hard refresh (Ctrl+Shift+R, or Cmd+Shift+R
 on a Mac) and reopen **Checklists**. Trello and your host both cache these files, and some
 hosts, GitHub Pages for one, can take a few minutes to publish. Keep your own `config.js`
 rather than overwriting it with the blank one from the zip.
 
 To check you are on the latest files, scroll to the bottom of the Checklists page. It shows
-`Checklist Overview 1.3`. If that line is missing or shows an older number, you are still
+`Checklist Overview 1.5`. If that line is missing or shows an older number, you are still
 being served older files. If you ever edit the code, change the `?v=` number on the script
 and style links in `index.html` and `overview.html`, and in `client.js`, so browsers fetch
 the new files.
@@ -165,9 +190,15 @@ key is set yet. Follow **API key setup**.
 button and allow read access. If it fails with "Failed to fetch", add the hosting address to
 the key's **Allowed origins**.
 
+**There is no chart.** It is left out when nothing is open, because there is nothing to show.
+If items are open and it is still missing, you are probably being served older files, or
+`timeline-chart.js` (new in 1.4) was not uploaded. The list, Export and the buttons keep
+working without it, so this is easy to miss. Check the bottom of the page says
+`Checklist Overview 1.5`, and upload every file.
+
 **I can see Checklists but not Export to Excel.** The export button is inside the page that
 Checklists opens, at the top right. If it is missing there, you are being served older files:
-scroll to the bottom of that page and look for `Checklist Overview 1.3`.
+scroll to the bottom of that page and look for `Checklist Overview 1.5`.
 
 ## Limits
 
@@ -178,21 +209,38 @@ scroll to the bottom of that page and look for `Checklist Overview 1.3`.
 - Due dates are shown in the time zone your browser is set to. Someone in another time zone
   may see a different day for an item due close to midnight.
 - The list is a snapshot taken when you open the page. Close and reopen it to refresh.
+- The chart counts check items that are open. It does not look at the dates on cards
+  themselves, only the due dates on the check items.
+- Weeks start on Monday, whatever your region's calendar says.
+- In a narrow window there is not room to name every column, so some date labels are left
+  off. Hover or Tab to a column for its dates, or use **Show as table**.
 
 ## What has and has not been tested
 
-Tested: the grouping, ordering, filtering, due-date, export and data-checking logic (42 unit
-tests, run under four time zones), and the page itself in Chromium with a stand-in for the
-Trello client (125 checks). That
-covered showing and hiding completed items, the remembered choice, the empty and
-everything-complete states, Trello leaving checklists out or sharing only some of them, the
-setup and connect flow, rejected fields, failed and refused requests, narrow screens, and
-card names containing HTML. Due dates were checked for overdue, completed, undated and
-far-future items, in three time zones and two languages, on wide and narrow screens, and
-through the REST path. For the export, the page was run in Chromium, the real browser
-download was captured, and the file was opened with openpyxl and LibreOffice to check the
-rows, statuses, due dates as real dates, links, frozen header, filters, and awkward text (formulas, HTML, emoji,
-newlines, very long text).
+Tested: the grouping, ordering, filtering, due-date, chart-bucketing, export and
+data-checking logic (79 unit tests, each run under six time zones, including ones that
+change their clocks), and the page itself in Chromium with a stand-in for the Trello
+client (223 checks, plus 49 more run against the zipped files served over HTTP). That covered showing and hiding completed items, the remembered
+choice, the empty and everything-complete states, Trello leaving checklists out or sharing
+only some of them, the setup and connect flow, rejected fields, failed and refused
+requests, narrow screens, and card names containing HTML. Due dates were checked for
+overdue, completed, undated and far-future items, in three time zones and two languages,
+on wide and narrow screens, and through the REST path. For the export, the page was run in
+Chromium, the real browser download was captured, and the file was opened with openpyxl and
+LibreOffice to check the rows, statuses, due dates as real dates, links, frozen header,
+filters, and awkward text (formulas, HTML, emoji, newlines, very long text).
+
+For the chart, the number in every column was compared with a separate calculation of the
+same dates, and the tests were run with the checking code deliberately broken to confirm
+they fail when they should. They covered overdue, undated, weekly, monthly and "Later"
+columns, completed items staying out, the Show/Hide completed buttons leaving it alone,
+hover and keyboard tooltips, the table of items (right items under each period, in the right
+order, with checklist, card and date; card names opening the card; names containing HTML;
+a 140-character unbroken name on a narrow screen), collapsing and remembering that, resizing, light and dark
+colours, a narrow screen with many columns, REST data, and two time zones. The chart is built
+so it cannot take the page down: with an older cached `overview.html`, a missing
+`timeline-chart.js`, an older `checklist-model.js`, or a chart that throws, the list, the buttons and the
+export were checked still to work, with the chart simply left out.
 
 Not tested: a real Trello board, and Microsoft Excel itself. The stand-in for Trello follows
 Trello's documentation, and the REST address, key and token handling follow its REST API
@@ -200,4 +248,5 @@ client guide, but the real authorization window, Trello's responses (in particul
 Trello's community documentation says) and whether its iframe
 lets the download through are the parts to check first when you install it. Trello
 announced in 2020 that it allows downloads started by a click in Power-Up iframes, which is
-how the export button works.
+how the export button works. The chart has only been seen in Chromium: Firefox and Safari
+should draw it the same way, since it is plain SVG, but they were not run.

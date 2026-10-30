@@ -1,4 +1,4 @@
-/* global TrelloPowerUp, ChecklistModel, XlsxExport */
+/* global TrelloPowerUp, ChecklistModel, XlsxExport, TimelineChart */
 var config = window.CHECKLIST_OVERVIEW_CONFIG || {};
 
 var t = config.appKey
@@ -10,6 +10,7 @@ var t = config.appKey
   : TrelloPowerUp.iframe();
 
 var HIDE_PREF_KEY = 'hideCompleted';
+var CHART_PREF_KEY = 'chartHidden';
 
 var state = {
   lists: [],
@@ -20,6 +21,9 @@ var state = {
   hideCompleted: false,
   boardName: '',
   cardStats: null,    // { expected, found } check items, from Trello's card data
+  chartHidden: false, // the person has collapsed the chart
+  timeline: null,     // open items grouped by due date, for the chart
+  chartWidth: 0,
   view: null          // what is currently on screen; the Excel export reads this
 };
 
@@ -30,7 +34,15 @@ var els = {
   hide: document.getElementById('btn-hide'),
   // If an older overview.html is served (cached or only partly uploaded), the button
   // is missing. A detached stand-in keeps the rest of the page working.
-  exportBtn: document.getElementById('btn-export') || document.createElement('button')
+  exportBtn: document.getElementById('btn-export') || document.createElement('button'),
+  // The chart's parts fall back to detached elements, as the export button does,
+  // so an older cached overview.html (without the chart) cannot stop the list loading.
+  chartPanel: document.getElementById('chart-panel') || document.createElement('section'),
+  chartBody: document.getElementById('chart-body') || document.createElement('div'),
+  chartWrap: document.getElementById('chart-wrap') || document.createElement('div'),
+  chartSub: document.getElementById('chart-sub') || document.createElement('p'),
+  chartTable: document.getElementById('chart-table') || document.createElement('div'),
+  chartBtn: document.getElementById('btn-chart') || document.createElement('button')
 };
 
 // ---------------------------------------------------------------------------
@@ -120,12 +132,14 @@ function load() {
     t.lists('id', 'name'),
     loadCards(),
     t.get('member', 'private', HIDE_PREF_KEY, false),
-    t.board('name')
+    t.board('name'),
+    t.get('member', 'private', CHART_PREF_KEY, false)
   ]).then(function (results) {
     state.lists = results[0] || [];
     state.cards = results[1] || [];
     state.hideCompleted = results[2] === true;
     state.boardName = (results[3] && results[3].name) || '';
+    state.chartHidden = results[4] === true;
 
     return tryRest().then(function (restByCard) {
       if (restByCard) {
@@ -162,6 +176,7 @@ var noteTimer = null;
 
 function disableControls() {
   state.view = null;
+  els.chartPanel.hidden = true;
   els.show.disabled = true;
   els.hide.disabled = true;
   els.exportBtn.disabled = true;
@@ -274,6 +289,7 @@ function render() {
   updateToggle();
   updateSummary(view.totals);
   els.exportBtn.disabled = view.totals.shown === 0;
+  drawChart();
   clear(els.content);
 
   if (view.totals.items === 0) {
@@ -422,6 +438,211 @@ function setHideCompleted(hide) {
 
 els.show.addEventListener('click', function () { setHideCompleted(false); });
 els.hide.addEventListener('click', function () { setHideCompleted(true); });
+
+// ---------------------------------------------------------------------------
+// Chart: every open item on the board, grouped by due date
+// ---------------------------------------------------------------------------
+
+function showsYear(date) {
+  return date.getFullYear() !== new Date().getFullYear();
+}
+
+function monthText(ms, long) {
+  var opts = { month: long ? 'long' : 'short' };
+  if (long || showsYear(new Date(ms))) opts.year = 'numeric';
+  return new Date(ms).toLocaleDateString(undefined, opts);
+}
+
+// The last day covered by a bucket (its end is the start of the next one).
+function lastDay(endMs) {
+  var d = new Date(endMs);
+  d.setDate(d.getDate() - 1);
+  return d.getTime();
+}
+
+function dayRange(startMs, endMs) {
+  var a = new Date(startMs);
+  var b = new Date(lastDay(endMs));
+  var opts = { day: 'numeric', month: 'short', year: 'numeric' };
+  if (typeof Intl !== 'undefined' && Intl.DateTimeFormat.prototype.formatRange) {
+    return new Intl.DateTimeFormat(undefined, opts).formatRange(a, b);
+  }
+  return a.toLocaleDateString(undefined, opts) + ' – ' + b.toLocaleDateString(undefined, opts);
+}
+
+var chartFormat = {
+  // Short text under a column.
+  label: function (b) {
+    if (b.kind === 'overdue') return 'Overdue';
+    if (b.kind === 'none') return 'No date';
+    if (b.kind === 'later') return 'Later';
+    // Weeks never run past about six months, so the day and month are enough
+    // here; the tooltip and the table carry the full dates with the year.
+    if (b.unit === 'month') return monthText(b.start, false);
+    return new Date(b.start).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  },
+  // Full description, for the tooltip and screen readers.
+  title: function (b) {
+    if (b.kind === 'overdue') return 'Overdue';
+    if (b.kind === 'none') return 'No due date';
+    if (b.kind === 'later') return 'Due from ' + monthText(b.start, true);
+    return b.unit === 'month'
+      ? 'Due in ' + monthText(b.start, true)
+      : 'Due ' + dayRange(b.start, b.end);
+  },
+  count: function (n, nounOnly) {
+    var noun = n === 1 ? 'open item' : 'open items';
+    return nounOnly ? noun : n + ' ' + noun;
+  },
+  summary: function (timeline) {
+    var parts = ['Column chart of ' + plural(timeline.openItems, 'open item') + ' by due date.'];
+    timeline.buckets.forEach(function (b) {
+      if (b.kind === 'overdue') parts.push(b.count + ' overdue.');
+      if (b.kind === 'none') parts.push(b.count + ' with no due date.');
+    });
+    parts.push('Use Tab to move between columns, or open the table below.');
+    return parts.join(' ');
+  }
+};
+
+// The same numbers as the chart, as text, with every open item listed under its
+// period: item, checklist, card and due date.
+function renderChartTable(timeline) {
+  clear(els.chartTable);
+  var scroller = el('div', 'chart-table-scroll');
+  var table = el('table');
+
+  var head = el('thead');
+  var hr = el('tr');
+  ['Item', 'Checklist', 'Card', 'Due date'].forEach(function (name) {
+    var th = el('th', null, name);
+    th.setAttribute('scope', 'col');
+    hr.appendChild(th);
+  });
+  head.appendChild(hr);
+  table.appendChild(head);
+
+  timeline.buckets.forEach(function (b) {
+    var body = el('tbody');
+
+    var group = el('tr', 'grp');
+    var gh = el('th');
+    gh.colSpan = 4;
+    gh.setAttribute('scope', 'rowgroup');
+    gh.appendChild(el('span', 'g-title', chartFormat.title(b)));
+    gh.appendChild(el('span', 'g-count', chartFormat.count(b.count)));
+    group.appendChild(gh);
+    body.appendChild(group);
+
+    b.items.forEach(function (it) {
+      var row = el('tr', 'row');
+      row.appendChild(el('td', 't-item', it.name));
+      row.appendChild(el('td', 't-list', it.checklist));
+
+      var cardCell = el('td', 't-card');
+      var link = el('a', 'cell-link', it.card);
+      link.href = '#';
+      link.addEventListener('click', function (e) {
+        e.preventDefault();
+        openCard({ id: it.cardId });
+      });
+      cardCell.appendChild(link);
+      row.appendChild(cardCell);
+
+      var dueCell = el('td', 't-due');
+      if (it.due) {
+        dueCell.appendChild(renderDue({ due: it.due, state: 'incomplete' }));
+      } else {
+        dueCell.appendChild(el('span', 'sr-only', 'No due date'));
+        dueCell.appendChild(el('span', 'none-mark', '\u2014'));
+        dueCell.lastChild.setAttribute('aria-hidden', 'true');
+      }
+      row.appendChild(dueCell);
+      body.appendChild(row);
+    });
+
+    table.appendChild(body);
+  });
+
+  var foot = el('tfoot');
+  var fr = el('tr');
+  var ft = el('th', null, 'Total');
+  ft.setAttribute('scope', 'row');
+  fr.appendChild(ft);
+  var fd = el('td', null, chartFormat.count(timeline.openItems));
+  fd.colSpan = 3;
+  fr.appendChild(fd);
+  foot.appendChild(fr);
+  table.appendChild(foot);
+
+  scroller.appendChild(table);
+  els.chartTable.appendChild(scroller);
+}
+
+function applyChartCollapsed() {
+  els.chartBody.hidden = state.chartHidden;
+  els.chartBtn.textContent = state.chartHidden ? 'Show chart' : 'Hide chart';
+  els.chartBtn.setAttribute('aria-expanded', String(!state.chartHidden));
+}
+
+function paintChart() {
+  var width = els.chartWrap.clientWidth || 640;
+  state.chartWidth = width;
+  TimelineChart.render(els.chartWrap, state.timeline, chartFormat, width);
+}
+
+// Redraws from the current data. Shows only items that are still open, so the
+// Show/Hide completed buttons do not change it. The chart is an extra: if it
+// cannot be drawn (a file missing or out of date after an update, say), it is
+// left out and the list carries on.
+function drawChart() {
+  try {
+    paintTimeline();
+  } catch (err) {
+    els.chartPanel.hidden = true;
+    if (typeof console !== 'undefined' && console.warn) console.warn('Checklist Overview: chart not drawn.', err);
+  }
+}
+
+function paintTimeline() {
+  var timeline = ChecklistModel.openTimeline(state.cards, state.byCard, Date.now(), { lists: state.lists });
+  state.timeline = timeline;
+
+  if (timeline.openItems === 0) {
+    els.chartPanel.hidden = true;
+    return;
+  }
+
+  els.chartPanel.hidden = false;
+  clear(els.chartSub);
+  var grouping = timeline.unit === 'week' ? ' · grouped by week, Monday to Sunday'
+    : timeline.unit === 'month' ? ' · grouped by month' : '';
+  els.chartSub.textContent = plural(timeline.openItems, 'open item') + ' across ' +
+    plural(timeline.openCards, 'card') + grouping;
+
+  applyChartCollapsed();
+  if (!state.chartHidden) paintChart();
+  renderChartTable(timeline);
+}
+
+els.chartBtn.addEventListener('click', function () {
+  state.chartHidden = !state.chartHidden;
+  applyChartCollapsed();
+  if (!state.chartHidden && state.timeline) paintChart();
+  t.set('member', 'private', CHART_PREF_KEY, state.chartHidden).catch(function () {});
+});
+
+// Keep the chart the width of its space when the window or Trello's panel resizes.
+function onChartResize() {
+  if (state.chartHidden || els.chartPanel.hidden || !state.timeline) return;
+  if (Math.abs(els.chartWrap.clientWidth - state.chartWidth) > 2) paintChart();
+}
+
+if (typeof ResizeObserver === 'function') {
+  new ResizeObserver(onChartResize).observe(els.chartBody);
+} else {
+  window.addEventListener('resize', onChartResize);
+}
 
 // ---------------------------------------------------------------------------
 // Excel export. Exports exactly what is on screen, so Hide completed leaves the

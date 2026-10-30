@@ -260,9 +260,172 @@
     return (board ? board.replace(/ /g, '-') + '-' : '') + what + '-' + stamp + '.xlsx';
   }
 
+  // ---- open items over time (for the chart) -------------------------------
+
+  var DAY_MS = 86400000;
+
+  // Whole days since 1970 for a local calendar date; unaffected by clock changes.
+  function dayNumber(ms) {
+    var d = new Date(ms);
+    return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS);
+  }
+
+  // Monday 00:00 in the viewer's time zone, for the week containing `ms`.
+  function startOfWeek(ms) {
+    var d = new Date(ms);
+    var sinceMonday = (d.getDay() + 6) % 7;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() - sinceMonday).getTime();
+  }
+
+  function addDays(ms, n) {
+    var d = new Date(ms);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime();
+  }
+
+  function startOfMonth(ms) {
+    var d = new Date(ms);
+    return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  }
+
+  function addMonths(ms, n) {
+    var d = new Date(ms);
+    return new Date(d.getFullYear(), d.getMonth() + n, 1).getTime();
+  }
+
+  function monthsBetween(aMs, bMs) {
+    var a = new Date(aMs);
+    var b = new Date(bMs);
+    return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  }
+
+  // Groups every OPEN (not complete) check item on the given cards by when it is
+  // due, for a single bar chart:
+  //   'overdue'  open items whose date has passed (same rule as the red chips)
+  //   'period'   one bucket per week, from this week to the last due date, with
+  //              empty weeks kept so the gaps are visible; or per month when the
+  //              span is longer than `maxWeeks`
+  //   'later'    months beyond `maxMonths`, folded into one bucket
+  //   'none'     open items with no due date
+  // Buckets with nothing in them are left out only for overdue/none/later; empty
+  // periods in the middle stay. Completed items never count, and only cards in
+  // `cards` are read, so archived cards are ignored.
+  function openTimeline(cards, byCard, nowMs, opts) {
+    var maxWeeks = (opts && opts.maxWeeks) || 26;
+    var maxMonths = (opts && opts.maxMonths) || 24;
+    var openItems = 0;
+    var openCards = 0;
+    var overdueItems = [];
+    var noneItems = [];
+    var upcoming = [];
+
+    // Cards in board order (list order, then position) when the lists are given, so
+    // items that share a date come out in the same order as on the page.
+    var listIndex = {};
+    ((opts && opts.lists) || []).forEach(function (list, i) { listIndex[list.id] = i; });
+    function listRank(card) {
+      return Object.prototype.hasOwnProperty.call(listIndex, card.idList) ? listIndex[card.idList] : Number.MAX_SAFE_INTEGER;
+    }
+    var ordered = (cards || []).slice().sort(function (a, b) {
+      var d = listRank(a) - listRank(b);
+      return d !== 0 && !isNaN(d) ? d : byPos(a, b);
+    });
+
+    ordered.forEach(function (card) {
+      var cardOpen = 0;
+      ((byCard && byCard[card.id]) || []).slice().sort(byPos).forEach(function (cl) {
+        cl.items.slice().sort(byPos).forEach(function (item) {
+          if (isComplete(item)) return;
+          cardOpen += 1;
+          var due = normalizeDue(item.due);
+          var ms = due ? Date.parse(due) : NaN;
+          var rec = {
+            name: item.name, checklist: cl.name, card: card.name, cardId: card.id,
+            due: due, ms: ms
+          };
+          if (isNaN(ms)) noneItems.push(rec);
+          else if (ms < nowMs) overdueItems.push(rec);
+          else upcoming.push(rec);
+        });
+      });
+      openItems += cardOpen;
+      if (cardOpen > 0) openCards += 1;
+    });
+
+    // Soonest first. Items on the same date keep the board order they were found in.
+    function bySoonest(a, b) { return a.ms - b.ms; }
+    overdueItems.sort(bySoonest);
+    upcoming.sort(bySoonest);
+
+    // What the caller gets for each item: names, card and date. No internals.
+    function publicItem(r) {
+      return { name: r.name, checklist: r.checklist, card: r.card, cardId: r.cardId, due: r.due };
+    }
+
+    var buckets = [];
+    var unit = null;
+
+    if (overdueItems.length > 0) {
+      buckets.push({ kind: 'overdue', count: overdueItems.length, start: null, end: null, items: overdueItems.map(publicItem) });
+    }
+
+    if (upcoming.length > 0) {
+      var last = upcoming[0].ms;
+      upcoming.forEach(function (r) { if (r.ms > last) last = r.ms; });
+
+      var firstWeek = startOfWeek(nowMs);
+      var weeks = (dayNumber(startOfWeek(last)) - dayNumber(firstWeek)) / 7 + 1;
+      var periods = [];
+      var indexOf;
+
+      if (weeks <= maxWeeks) {
+        unit = 'week';
+        for (var w = 0; w < weeks; w++) {
+          var ws = addDays(firstWeek, 7 * w);
+          periods.push({ kind: 'period', unit: 'week', count: 0, start: ws, end: addDays(ws, 7), items: [] });
+        }
+        indexOf = function (ms) { return (dayNumber(startOfWeek(ms)) - dayNumber(firstWeek)) / 7; };
+      } else {
+        unit = 'month';
+        var firstMonth = startOfMonth(nowMs);
+        var months = monthsBetween(firstMonth, startOfMonth(last)) + 1;
+        var shown = Math.min(months, maxMonths);
+        for (var m = 0; m < shown; m++) {
+          periods.push({
+            kind: 'period', unit: 'month', count: 0,
+            start: addMonths(firstMonth, m), end: addMonths(firstMonth, m + 1), items: []
+          });
+        }
+        indexOf = function (ms) { return monthsBetween(firstMonth, startOfMonth(ms)); };
+      }
+
+      var laterItems = [];
+      upcoming.forEach(function (r) {
+        var i = indexOf(r.ms);
+        if (i < periods.length) periods[i].items.push(publicItem(r));
+        else laterItems.push(publicItem(r));
+      });
+      periods.forEach(function (p) { p.count = p.items.length; });
+
+      buckets = buckets.concat(periods);
+      if (laterItems.length > 0) {
+        buckets.push({
+          kind: 'later', count: laterItems.length, start: periods[periods.length - 1].end, end: null,
+          items: laterItems
+        });
+      }
+    }
+
+    if (noneItems.length > 0) {
+      buckets.push({ kind: 'none', count: noneItems.length, start: null, end: null, items: noneItems.map(publicItem) });
+    }
+
+    return { unit: unit, buckets: buckets, openItems: openItems, openCards: openCards };
+  }
+
   return {
     isComplete: isComplete,
     isOverdue: isOverdue,
+    openTimeline: openTimeline,
     fromCardData: fromCardData,
     fromRestChecklists: fromRestChecklists,
     buildView: buildView,
