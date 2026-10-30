@@ -6,8 +6,8 @@ var capabilities = {
   'board-buttons': function () {
     return [{
       icon: {
-        dark: './images/icon-white.svg',
-        light: './images/icon-dark.svg'
+        dark: 'https://spyrosgg.github.io/trllo-checklist-overview/images/icon-white.svg',
+        light: 'https://spyrosgg.github.io/trllo-checklist-overview/images/icon-dark.svg'
       },
       text: 'Checklists',
       callback: function (t) {
