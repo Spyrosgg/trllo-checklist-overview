@@ -267,7 +267,7 @@ body {
 /* Status and empty states */
 .panel {
   margin: 64px auto 0;
-  max-width: 460px;
+  max-width: 520px;
   text-align: center;
   color: var(--muted);
 }
@@ -284,6 +284,26 @@ body {
 
 .panel .detail {
   font-size: 12px;
+}
+
+.panel .steps {
+  margin: 16px 0;
+  padding-left: 22px;
+  text-align: left;
+}
+
+.panel .steps li {
+  margin: 0 0 10px;
+  color: var(--text);
+}
+
+.panel code {
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
 }
 
 .panel button {

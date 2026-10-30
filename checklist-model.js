@@ -32,16 +32,50 @@
     };
   }
 
-  // Reads checklists out of the card objects returned by t.cards(). Trello does
-  // not guarantee check items are included there, so `complete` is false when
-  // any checklist has no checkItems array, or any item has no state. The caller
-  // should then fetch the data from the REST API instead.
+  // Reads checklists out of the card objects returned by t.cards().
+  //
+  // Trello does not offer checklists to Power-Ups at board level: its web client
+  // only loads a card's checklists once that card's back has been opened, so the
+  // field can be missing, empty or partial. Nothing here is taken on trust.
+  // `complete` is true only when the data is verifiably the whole picture:
+  //   - every card either has a checklists array or has a badge saying it has no
+  //     check items (badges.checkItems === 0);
+  //   - every checklist has a checkItems array, and every item has a state;
+  //   - where a card's badge gives its check-item count, the number found matches;
+  //   - finding nothing at all is accepted only if every card's badge says zero.
+  // When `complete` is false the caller should use the REST API instead.
+  //
+  // `expected` is the total from the badges (null if any card has no badge count)
+  // and `found` is the number of items actually read, for explaining a mismatch.
   function fromCardData(cards) {
     var byCard = {};
     var complete = true;
+    var found = 0;
+    var expected = 0;
+    var badgesKnown = true;
+    var allBadgesZero = true;
 
     (cards || []).forEach(function (card) {
-      (card.checklists || []).forEach(function (cl) {
+      var badge = (card.badges && typeof card.badges.checkItems === 'number')
+        ? card.badges.checkItems
+        : null;
+
+      if (badge === null) {
+        badgesKnown = false;
+        allBadgesZero = false;
+      } else {
+        expected += badge;
+        if (badge > 0) allBadgesZero = false;
+      }
+
+      if (!Array.isArray(card.checklists)) {
+        // Field left out. That only means "no checklists" if the badge says so.
+        if (badge !== 0) complete = false;
+        return;
+      }
+
+      var cardFound = 0;
+      card.checklists.forEach(function (cl) {
         if (!Array.isArray(cl.checkItems)) {
           complete = false;
           return;
@@ -59,10 +93,21 @@
           pos: cl.pos,
           items: cl.checkItems.map(normalizeItem)
         });
+        cardFound += cl.checkItems.length;
       });
+
+      found += cardFound;
+      if (badge !== null && badge !== cardFound) complete = false;
     });
 
-    return { byCard: byCard, complete: complete };
+    if (found === 0 && !allBadgesZero) complete = false;
+
+    return {
+      byCard: byCard,
+      complete: complete,
+      expected: badgesKnown ? expected : null,
+      found: found
+    };
   }
 
   // Reads the response of GET /boards/{id}/checklists?checkItems=all.

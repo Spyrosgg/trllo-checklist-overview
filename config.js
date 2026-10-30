@@ -1,14 +1,19 @@
-// Optional settings.
+// Your Power-Up's API key. Needed to read check items.
 //
-// Leave appKey empty to try Trello's built-in card data first. That needs no
-// setup, but Trello does not guarantee that check items are included in it.
+// Trello does not offer checklists to Power-Ups directly, so this Power-Up reads
+// them through Trello's REST API, which needs a key.
 //
-// If the overview page shows a "Connect to Trello" panel, put your Power-Up's
-// API key here (Power-Up admin portal > your Power-Up > API key), add the
-// address this folder is hosted at to that key's Allowed origins, and reload.
-// See the README for the steps.
+//   1. Go to https://trello.com/apps/admin and open this Power-Up.
+//   2. Open the "Trello Auth" tab and choose "Generate a new API Key".
+//   3. Paste the key below, between the quotes after appKey.
+//   4. On the same page, add the address this folder is hosted at to
+//      "Allowed origins" (for example https://example.github.io).
+//   5. Upload this file again, refresh the board, open Checklists and choose
+//      "Connect to Trello".
+//
+// The README has the same steps in more detail.
 window.CHECKLIST_OVERVIEW_CONFIG = {
-  appKey: '',
+  appKey: 'f1512c9cb58c83d17e169681855b4791',
   appName: 'Checklist Overview',
   appAuthor: ''
 };

@@ -19,6 +19,7 @@ var state = {
   restError: null,    // last REST failure, shown on the connect panel
   hideCompleted: false,
   boardName: '',
+  cardStats: null,    // { expected, found } check items, from Trello's card data
   view: null          // what is currently on screen; the Excel export reads this
 };
 
@@ -100,13 +101,23 @@ function tryRest() {
   });
 }
 
+function loadCards() {
+  // `badges` carries each card's check-item count, used to confirm that the
+  // checklists Trello shares are the whole picture and not a partial one.
+  return t.cards('id', 'name', 'idList', 'pos', 'url', 'checklists', 'badges').catch(function () {
+    // If Trello refuses one of those fields, the basics are still enough when the
+    // check items come from the REST API.
+    return t.cards('id', 'name', 'idList', 'pos', 'url');
+  });
+}
+
 function load() {
   state.restError = null;
   setLoading();
 
   return Promise.all([
     t.lists('id', 'name'),
-    t.cards('id', 'name', 'idList', 'pos', 'url', 'checklists'),
+    loadCards(),
     t.get('member', 'private', HIDE_PREF_KEY, false),
     t.board('name')
   ]).then(function (results) {
@@ -123,6 +134,7 @@ function load() {
       }
 
       var fromCards = ChecklistModel.fromCardData(state.cards);
+      state.cardStats = { expected: fromCards.expected, found: fromCards.found };
       if (fromCards.complete) {
         state.byCard = fromCards.byCard;
         state.source = 'card data';
@@ -239,15 +251,11 @@ function render() {
   clear(els.content);
 
   if (view.totals.items === 0) {
-    var lines = [{ text: 'Add a checklist to a card and its items will appear here.' }];
-    if (state.source === 'card data') {
-      lines.push({
-        small: true,
-        text: 'If your cards do have checklists, Trello may not be sharing check items ' +
-          'with this Power-Up. See "Connect to Trello" in the README.'
-      });
-    }
-    els.content.appendChild(panel('No checklist items found', lines));
+    // Only reached when the source is trustworthy: the REST API, or card data that
+    // every card's badge confirmed is empty. So this really means "none".
+    els.content.appendChild(panel('No checklist items found', [
+      { text: 'Add a checklist to a card and its items will appear here.' }
+    ]));
     return;
   }
 
@@ -274,28 +282,80 @@ function setLoading() {
   clear(els.content);
 }
 
+// The address this page is served from, which is what the API key's Allowed
+// origins must contain. Null when opened from a file.
+function hostedOrigin() {
+  var origin = window.location && window.location.origin;
+  return origin && /^https?:\/\//i.test(origin) ? origin : null;
+}
+
+// Says what Trello did and did not share, using the badge counts when it has them.
+function whyUnavailable() {
+  var s = state.cardStats;
+  if (s && typeof s.expected === 'number' && s.expected > s.found) {
+    return 'Trello shows ' + plural(s.expected, 'check item') + ' on this board’s cards, ' +
+      'but shared ' + s.found + ' of them with this Power-Up.';
+  }
+  return 'Trello did not share this board’s check items with this Power-Up.';
+}
+
+// A list item built from plain strings and { code: '...' } parts, all as text.
+function stepItem(parts) {
+  var li = el('li');
+  parts.forEach(function (part) {
+    if (typeof part === 'string') li.appendChild(document.createTextNode(part));
+    else li.appendChild(el('code', null, part.code));
+  });
+  return li;
+}
+
 function showConnect() {
   disableControls();
   els.summary.textContent = 'Check items are not available yet';
   clear(els.content);
 
+  var origin = hostedOrigin();
+
   if (!config.appKey) {
-    els.content.appendChild(panel('One-time setup needed', [
-      { text: 'Trello did not include check items in the card data it shared with this Power-Up.' },
-      { text: 'Add your Power-Up’s API key to config.js, then reopen this page. The README has the steps.' }
+    var setup = el('div', 'panel');
+    setup.appendChild(el('h2', null, 'One-time setup needed'));
+    setup.appendChild(el('p', null, whyUnavailable() + ' Trello does not offer checklists to ' +
+      'Power-Ups directly and recommends its REST API instead. That needs a free API key for ' +
+      'this Power-Up, set up once for everyone on the board.'));
+
+    var steps = el('ol', 'steps');
+    steps.appendChild(stepItem([
+      'Open ', { code: 'trello.com/apps/admin' }, ', choose this Power-Up, open the ',
+      { code: 'Trello Auth' }, ' tab and choose ', { code: 'Generate a new API Key' },
+      '. Copy the key.'
     ]));
+    steps.appendChild(stepItem(origin
+      ? ['On the same page, add this address to ', { code: 'Allowed origins' }, ': ', { code: origin }]
+      : ['On the same page, add the address this folder is hosted at to ', { code: 'Allowed origins' }, '.']));
+    steps.appendChild(stepItem([
+      'In the Power-Up folder, open ', { code: 'config.js' }, ', paste the key between the quotes after ',
+      { code: 'appKey' }, ', and upload the file again.'
+    ]));
+    steps.appendChild(stepItem([
+      'Refresh the board (Ctrl+Shift+R), open ', { code: 'Checklists' }, ' and choose ',
+      { code: 'Connect to Trello' }, '.'
+    ]));
+    setup.appendChild(steps);
+    setup.appendChild(el('p', 'detail', 'The README has the same steps in more detail.'));
+    els.content.appendChild(setup);
     return;
   }
 
   var box = panel('Connect to Trello', [
-    { text: 'Trello did not include check items in the card data it shared with this Power-Up. ' +
-      'Connect once to let it read this board’s checklists. It only asks for read access.' }
+    { text: whyUnavailable() + ' Connect once to let this page read the board’s checklists ' +
+      'through Trello. It only asks for read access.' }
   ]);
 
   if (state.restError) {
     box.appendChild(el('p', 'detail',
-      'Last attempt failed: ' + (state.restError.message || 'unknown error') +
-      ' If this says "Failed to fetch", add the address this page is hosted at to your API key’s Allowed origins.'));
+      'Last attempt failed: ' + (state.restError.message || 'unknown error') + '. ' +
+      'If this says "Failed to fetch", add ' + (origin || 'the address this folder is hosted at') +
+      ' to your API key’s Allowed origins.'));
   }
 
   var button = el('button', null, 'Connect to Trello');
