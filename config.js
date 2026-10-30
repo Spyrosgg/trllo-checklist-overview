@@ -8,7 +8,7 @@
 // address this folder is hosted at to that key's Allowed origins, and reload.
 // See the README for the steps.
 window.CHECKLIST_OVERVIEW_CONFIG = {
-  appKey: '',
+  appKey: f1512c9cb58c83d17e169681855b4791,
   appName: 'Checklist Overview',
   appAuthor: ''
 };
