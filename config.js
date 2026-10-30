@@ -13,7 +13,7 @@
 //
 // The README has the same steps in more detail.
 window.CHECKLIST_OVERVIEW_CONFIG = {
-  appKey: '',
+  appKey: 'f1512c9cb58c83d17e169681855b4791',
   appName: 'Checklist Overview',
   appAuthor: ''
 };
