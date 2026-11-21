@@ -11,6 +11,39 @@ var t = config.appKey
 
 var HIDE_PREF_KEY = 'hideCompleted';
 var CHART_PREF_KEY = 'chartHidden';
+var FILTER_PREF_KEY = 'checklistFilter';   // the one checklist name being shown, or '' for all
+
+// Capitals and extra spaces do not matter when comparing checklist names.
+function nameKey(name) {
+  return String(name == null ? '' : name).replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+// The checklist names that get a button of their own, one at a time. To use other
+// names, add  filterNames: ['Milestones', 'Actions']  to config.js.
+var FILTER_NAMES = (function () {
+  var out = [];
+  var seen = {};
+  if (Array.isArray(config.filterNames)) {
+    config.filterNames.forEach(function (n) {
+      var key = nameKey(n);
+      if (!key || Object.prototype.hasOwnProperty.call(seen, key)) return;
+      seen[key] = true;
+      out.push(String(n).replace(/\s+/g, ' ').trim());
+    });
+  }
+  return out.length ? out : ['Milestones', 'Actions'];
+})();
+
+// The button name that a saved value refers to, or '' (all checklists) if it matches none,
+// for example because the names in config.js have changed since it was saved.
+function filterNameFor(value) {
+  var key = nameKey(value);
+  if (!key) return '';
+  for (var i = 0; i < FILTER_NAMES.length; i++) {
+    if (nameKey(FILTER_NAMES[i]) === key) return FILTER_NAMES[i];
+  }
+  return '';
+}
 
 var state = {
   lists: [],
@@ -19,6 +52,7 @@ var state = {
   source: null,       // 'rest' or 'card data'
   restError: null,    // last REST failure, shown on the connect panel
   hideCompleted: false,
+  filter: '',         // '' shows every checklist; otherwise only checklists with this name
   boardName: '',
   cardStats: null,    // { expected, found } check items, from Trello's card data
   chartHidden: false, // the person has collapsed the chart
@@ -27,11 +61,15 @@ var state = {
   view: null          // what is currently on screen; the Excel export reads this
 };
 
+var filterButtons = [];   // { name, node }: one per name in FILTER_NAMES, built below
+
 var els = {
   summary: document.getElementById('summary'),
   content: document.getElementById('content'),
   show: document.getElementById('btn-show'),
   hide: document.getElementById('btn-hide'),
+  // Detached stand-ins when an older overview.html has no filter buttons.
+  allLists: document.getElementById('btn-all-lists') || document.createElement('button'),
   // If an older overview.html is served (cached or only partly uploaded), the button
   // is missing. A detached stand-in keeps the rest of the page working.
   exportBtn: document.getElementById('btn-export') || document.createElement('button'),
@@ -133,13 +171,17 @@ function load() {
     loadCards(),
     t.get('member', 'private', HIDE_PREF_KEY, false),
     t.board('name'),
-    t.get('member', 'private', CHART_PREF_KEY, false)
+    t.get('member', 'private', CHART_PREF_KEY, false),
+    t.get('member', 'private', FILTER_PREF_KEY, false)
   ]).then(function (results) {
     state.lists = results[0] || [];
     state.cards = results[1] || [];
     state.hideCompleted = results[2] === true;
     state.boardName = (results[3] && results[3].name) || '';
     state.chartHidden = results[4] === true;
+    // A saved choice is honoured only if this page has the buttons to undo it, which an
+    // older cached overview.html would not.
+    state.filter = document.getElementById('btn-all-lists') ? filterNameFor(results[5]) : '';
 
     return tryRest().then(function (restByCard) {
       if (restByCard) {
@@ -170,6 +212,21 @@ function updateToggle() {
   els.hide.disabled = false;
   els.show.setAttribute('aria-pressed', String(!state.hideCompleted));
   els.hide.setAttribute('aria-pressed', String(state.hideCompleted));
+
+  els.allLists.disabled = false;
+  els.allLists.setAttribute('aria-pressed', String(state.filter === ''));
+  filterButtons.forEach(function (fb) {
+    fb.node.disabled = false;
+    fb.node.setAttribute('aria-pressed', String(state.filter === fb.name));
+  });
+}
+
+// The checklist data the page works from: all of it, or only the checklists with the
+// chosen name. The list, the counts, the chart and the Excel file all
+// read this one thing, so they always agree about what is being shown.
+function visibleByCard() {
+  if (!state.filter || typeof ChecklistModel.filterChecklists !== 'function') return state.byCard;
+  return ChecklistModel.filterChecklists(state.byCard, [state.filter]);
 }
 
 var noteTimer = null;
@@ -179,6 +236,8 @@ function disableControls() {
   els.chartPanel.hidden = true;
   els.show.disabled = true;
   els.hide.disabled = true;
+  els.allLists.disabled = true;
+  filterButtons.forEach(function (fb) { fb.node.disabled = true; });
   els.exportBtn.disabled = true;
 }
 
@@ -186,7 +245,9 @@ function updateSummary(totals) {
   clearTimeout(noteTimer);
   clear(els.summary);
   if (totals.items === 0) {
-    els.summary.textContent = 'No checklist items on this board';
+    els.summary.textContent = state.filter
+      ? 'No items in checklists called ' + state.filter
+      : 'No checklist items on this board';
     return;
   }
 
@@ -194,6 +255,10 @@ function updateSummary(totals) {
   els.summary.appendChild(strong);
   els.summary.appendChild(document.createTextNode(
     ' items complete across ' + plural(totals.cards, 'card')));
+
+  if (state.filter) {
+    els.summary.appendChild(document.createTextNode(' · only ' + state.filter));
+  }
 
   if (state.hideCompleted) {
     els.summary.appendChild(document.createTextNode(
@@ -280,8 +345,33 @@ function panel(title, lines) {
   return box;
 }
 
+// Shown when the chosen checklist name leaves nothing: either no checklist has that name,
+// or they exist but are empty. Lists the names that are on the board, so a different
+// spelling is easy to spot, and offers a way back.
+function noMatchPanel() {
+  var names = ChecklistModel.checklistNames(state.byCard);
+  var matching = ChecklistModel.filterChecklists(state.byCard, [state.filter]);
+  var exist = Object.keys(matching).length > 0;
+
+  var lines = [];
+  if (exist) {
+    lines.push({ text: 'Checklists called ' + state.filter + ' exist, but have no items yet.' });
+  } else if (names.length > 0) {
+    var shown = names.slice(0, 12);
+    var more = names.length - shown.length;
+    lines.push({ text: 'Checklists on this board are called: ' + shown.join(', ') +
+      (more > 0 ? ' and ' + more + ' more' : '') + '.', small: true });
+  }
+  var box = panel(exist ? 'No items in ' + state.filter + ' checklists' : 'No checklists called ' + state.filter, lines);
+  var back = el('button', null, 'Show all checklists');
+  back.type = 'button';
+  back.addEventListener('click', function () { setFilter(''); });
+  box.appendChild(back);
+  return box;
+}
+
 function render() {
-  var view = ChecklistModel.buildView(state.lists, state.cards, state.byCard, {
+  var view = ChecklistModel.buildView(state.lists, state.cards, visibleByCard(), {
     hideCompleted: state.hideCompleted
   });
 
@@ -291,6 +381,11 @@ function render() {
   els.exportBtn.disabled = view.totals.shown === 0;
   drawChart();
   clear(els.content);
+
+  if (view.totals.items === 0 && state.filter && ChecklistModel.checklistNames(state.byCard).length > 0) {
+    els.content.appendChild(noMatchPanel());
+    return;
+  }
 
   if (view.totals.items === 0) {
     // Only reached when the source is trustworthy: the REST API, or card data that
@@ -303,7 +398,9 @@ function render() {
 
   if (view.totals.shown === 0) {
     els.content.appendChild(panel('Everything is complete', [
-      { text: 'All ' + view.totals.items + ' items are done. Choose Show completed to see them.' }
+      { text: 'All ' + view.totals.items + ' items' +
+        (state.filter ? ' in checklists called ' + state.filter : '') +
+        ' are done. Choose Show completed to see them.' }
     ]));
     return;
   }
@@ -438,6 +535,35 @@ function setHideCompleted(hide) {
 
 els.show.addEventListener('click', function () { setHideCompleted(false); });
 els.hide.addEventListener('click', function () { setHideCompleted(true); });
+
+function setFilter(name) {
+  if (state.filter === name) return;
+  state.filter = name;
+  render();
+  t.set('member', 'private', FILTER_PREF_KEY, name).catch(function () {});
+}
+
+els.allLists.addEventListener('click', function () { setFilter(''); });
+
+// One button for each name, after "All checklists". If an older cached page has other
+// buttons in this group, they are removed so only the working ones are left.
+(function buildFilterButtons() {
+  var group = els.allLists.parentNode;
+  if (!group) return;
+  Array.prototype.slice.call(group.children).forEach(function (child) {
+    if (child !== els.allLists) group.removeChild(child);
+  });
+  FILTER_NAMES.forEach(function (name) {
+    var node = el('button', null, name);
+    node.type = 'button';
+    node.disabled = true;
+    node.setAttribute('aria-pressed', 'false');
+    node.title = 'Show only checklists called ' + name;
+    node.addEventListener('click', function () { setFilter(name); });
+    group.appendChild(node);
+    filterButtons.push({ name: name, node: node });
+  });
+})();
 
 // ---------------------------------------------------------------------------
 // Chart: every open item on the board, grouped by due date
@@ -605,7 +731,7 @@ function drawChart() {
 }
 
 function paintTimeline() {
-  var timeline = ChecklistModel.openTimeline(state.cards, state.byCard, Date.now(), { lists: state.lists });
+  var timeline = ChecklistModel.openTimeline(state.cards, visibleByCard(), Date.now(), { lists: state.lists });
   state.timeline = timeline;
 
   if (timeline.openItems === 0) {
@@ -618,7 +744,8 @@ function paintTimeline() {
   var grouping = timeline.unit === 'week' ? ' · grouped by week, Monday to Sunday'
     : timeline.unit === 'month' ? ' · grouped by month' : '';
   els.chartSub.textContent = plural(timeline.openItems, 'open item') + ' across ' +
-    plural(timeline.openCards, 'card') + grouping;
+    plural(timeline.openCards, 'card') +
+    (state.filter ? ' · only ' + state.filter : '') + grouping;
 
   applyChartCollapsed();
   if (!state.chartHidden) paintChart();
@@ -682,7 +809,9 @@ function exportToExcel() {
   try {
     var table = ChecklistModel.toTable(view);
     var bytes = XlsxExport.build({
-      sheetName: state.hideCompleted ? 'Open checklist items' : 'Checklist items',
+      sheetName: state.filter
+        ? (state.hideCompleted ? 'Open ' : '') + state.filter
+        : (state.hideCompleted ? 'Open checklist items' : 'Checklist items'),
       headers: table.headers,
       widths: [18, 30, 24, 60, 18, 12, 42],
       wrap: [1, 2, 3],   // Card, Checklist, Item
@@ -690,7 +819,8 @@ function exportToExcel() {
       links: [6],        // Card link
       rows: table.rows
     });
-    download(bytes, ChecklistModel.exportFileName(state.boardName, state.hideCompleted));
+    download(bytes, ChecklistModel.exportFileName(
+      state.boardName, state.hideCompleted, undefined, state.filter));
     flashSummary('Created an Excel file with ' + plural(table.rows.length, 'item') +
       '. Check your downloads.');
   } catch (err) {

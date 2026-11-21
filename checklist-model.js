@@ -246,7 +246,9 @@
 
   // e.g. "Roadmap-checklist-items-2026-10-28.xlsx", or "...-open-checklist-items-..."
   // when completed items are hidden. Characters Windows and macOS reject are dropped.
-  function exportFileName(boardName, hideCompleted, date) {
+  // scope: optional words for a filtered export, e.g. "Milestones Actions", which end up
+  // in the file name so exports of different views are easy to tell apart.
+  function exportFileName(boardName, hideCompleted, date, scope) {
     var d = date || new Date();
     var board = String(boardName || '')
       .replace(/[\u0000-\u001F\\\/:*?"<>|]/g, '')
@@ -257,7 +259,63 @@
       .trim();
     var stamp = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
     var what = hideCompleted ? 'open-checklist-items' : 'checklist-items';
-    return (board ? board.replace(/ /g, '-') + '-' : '') + what + '-' + stamp + '.xlsx';
+    var only = String(scope || '')
+      .replace(/[\u0000-\u001F\\\/:*?"<>|&]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 40)
+      .trim()
+      .toLowerCase()
+      .replace(/ /g, '-');
+    return (board ? board.replace(/ /g, '-') + '-' : '') + what + (only ? '-' + only : '') + '-' + stamp + '.xlsx';
+  }
+
+  // ---- filtering by checklist name -----------------------------------------
+
+  // Names are compared ignoring case, surrounding spaces and runs of spaces, so
+  // "milestones " and "Milestones" are the same name.
+  function nameKey(name) {
+    return String(name == null ? '' : name).replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  var hasOwn = Object.prototype.hasOwnProperty;
+
+  // Keeps only the checklists whose name is one of `names`, and drops cards left
+  // with none. With no usable names the data is returned as it came.
+  function filterChecklists(byCard, names) {
+    var wanted = {};
+    var any = false;
+    (names || []).forEach(function (n) {
+      var key = nameKey(n);
+      if (key) { wanted[key] = true; any = true; }
+    });
+    if (!any) return byCard;
+
+    var out = {};
+    Object.keys(byCard || {}).forEach(function (cardId) {
+      var kept = (byCard[cardId] || []).filter(function (cl) {
+        return hasOwn.call(wanted, nameKey(cl.name));
+      });
+      if (kept.length > 0) out[cardId] = kept;
+    });
+    return out;
+  }
+
+  // The distinct checklist names on the board (first spelling seen), A to Z.
+  function checklistNames(byCard) {
+    var seen = {};
+    var names = [];
+    Object.keys(byCard || {}).forEach(function (cardId) {
+      (byCard[cardId] || []).forEach(function (cl) {
+        var key = nameKey(cl.name);
+        if (!key || hasOwn.call(seen, key)) return;
+        seen[key] = true;
+        names.push(String(cl.name).replace(/\s+/g, ' ').trim());
+      });
+    });
+    return names.sort(function (a, b) {
+      return a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0;
+    });
   }
 
   // ---- open items over time (for the chart) -------------------------------
@@ -429,6 +487,8 @@
     fromCardData: fromCardData,
     fromRestChecklists: fromRestChecklists,
     buildView: buildView,
+    filterChecklists: filterChecklists,
+    checklistNames: checklistNames,
     toTable: toTable,
     exportFileName: exportFileName
   };

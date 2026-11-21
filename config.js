@@ -12,8 +12,13 @@
 //      "Connect to Trello".
 //
 // The README has the same steps in more detail.
+//
+// Optional: the checklist names that get a filter button of their own (Milestones and
+// Actions, if you leave this out). To use other names, add a line like this inside the
+// braces below:
+//   filterNames: ['Milestones', 'Actions'],
 window.CHECKLIST_OVERVIEW_CONFIG = {
-  appKey: 'f1512c9cb58c83d17e169681855b4791',
+  appKey: '',
   appName: 'Checklist Overview',
   appAuthor: ''
 };

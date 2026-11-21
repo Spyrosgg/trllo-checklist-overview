@@ -2,8 +2,8 @@
 
 Adds a **Checklists** button to the top bar of a board. It opens a full-page view
 of every checklist item on every card, grouped by list, with **Show completed** and
-**Hide completed** buttons, an **Export to Excel** button, and a chart of everything that
-is still open, by due date.
+**Hide completed** buttons, a checklist filter (**All checklists**, **Milestones** or **Actions**),
+an **Export to Excel** button, and a chart of everything that is still open, by due date.
 
 - Items are grouped by list (in board order), then card, then checklist, in the same
   order they have on the board.
@@ -14,8 +14,11 @@ is still open, by due date.
   language. Open items whose date has passed are shown in red. Hover a date for the exact
   time.
 - A **chart of open items by due date** sits above the list (see below).
+- A **filter** shows all checklists, only the ones called Milestones, or only the ones called
+  Actions (see below).
 - Click a card name to open that card.
-- Your Show/Hide choices (completed items, and the chart) are remembered for you on that board.
+- Your choices (completed items, the checklist filter, and the chart) are remembered for you
+  on that board.
 - **Export to Excel** downloads what is on screen as an `.xlsx` file (see below).
 - Read-only: it never changes your cards or checklists.
 
@@ -38,6 +41,32 @@ shows no error. Without 5 the page opens but asks for setup instead of listing i
    not offer checklists to Power-Ups directly, so this page reads them through Trello's
    REST API, which needs the key. See **API key setup** below.
 
+## Filter: all checklists, only Milestones, or only Actions
+
+Next to Export there is a row of three buttons: **All checklists**, **Milestones** and
+**Actions**. Pick one. Milestones shows only the checklists called Milestones, and Actions
+shows only the checklists called Actions. They are separate, so you never see both at once.
+Everything on the page follows the choice together: the list, the counts at the top, the
+chart and its table, and the Excel file.
+
+- A name matches whatever its capitals and spacing, so `milestones` and ` ACTIONS ` count.
+  It has to be the whole name: a checklist called `Milestones Q1` does not match.
+- Cards with no checklist of that name drop out of the list, and the header counts only what is
+  kept, for example `1 of 3 items complete across 1 card · only Actions`.
+- It works with Show/Hide completed. The chart still shows open items only.
+- An export made with a filter on says so in its file name
+  (`...-checklist-items-actions-2026-11-21.xlsx`) and in the sheet's name.
+- If no checklist has the name, the page says so, lists the checklist names that do exist on
+  the board (handy for spotting a different spelling), and has a **Show all checklists** button.
+- Your choice is remembered for you, so it can stay on.
+
+To use other names, add one line inside the braces in `config.js`:
+
+    filterNames: ['Milestones', 'Actions'],
+
+Each name gets its own button, so three names give three buttons after **All checklists**.
+Without that line, or with an unusable one, Milestones and Actions are used.
+
 ## Chart: open items by due date
 
 A column chart at the top of the page counts every check item that is **not yet complete**,
@@ -59,6 +88,8 @@ answers "how much is still to do, and when is it due?".
   disappears when nothing is open.
 - **Hide chart** collapses it, and the page remembers that for you.
 - Dates are grouped in your browser's time zone. The export does not include the chart.
+- With a checklist filter on, the chart counts only items in the chosen checklists, and its
+  subtitle says so.
 
 ## Export to Excel
 
@@ -165,7 +196,7 @@ hosts, GitHub Pages for one, can take a few minutes to publish. Keep your own `c
 rather than overwriting it with the blank one from the zip.
 
 To check you are on the latest files, scroll to the bottom of the Checklists page. It shows
-`Checklist Overview 1.5`. If that line is missing or shows an older number, you are still
+`Checklist Overview 1.7`. If that line is missing or shows an older number, you are still
 being served older files. If you ever edit the code, change the `?v=` number on the script
 and style links in `index.html` and `overview.html`, and in `client.js`, so browsers fetch
 the new files.
@@ -194,11 +225,11 @@ the key's **Allowed origins**.
 If items are open and it is still missing, you are probably being served older files, or
 `timeline-chart.js` (new in 1.4) was not uploaded. The list, Export and the buttons keep
 working without it, so this is easy to miss. Check the bottom of the page says
-`Checklist Overview 1.5`, and upload every file.
+`Checklist Overview 1.7`, and upload every file.
 
 **I can see Checklists but not Export to Excel.** The export button is inside the page that
 Checklists opens, at the top right. If it is missing there, you are being served older files:
-scroll to the bottom of that page and look for `Checklist Overview 1.5`.
+scroll to the bottom of that page and look for `Checklist Overview 1.7`.
 
 ## Limits
 
@@ -212,15 +243,17 @@ scroll to the bottom of that page and look for `Checklist Overview 1.5`.
 - The chart counts check items that are open. It does not look at the dates on cards
   themselves, only the due dates on the check items.
 - Weeks start on Monday, whatever your region's calendar says.
+- The filter matches whole checklist names only, one name at a time. It cannot match part of
+  a name or show two names together, and it filters on checklist names, not on card names or labels.
 - In a narrow window there is not room to name every column, so some date labels are left
   off. Hover or Tab to a column for its dates, or use **Show as table**.
 
 ## What has and has not been tested
 
 Tested: the grouping, ordering, filtering, due-date, chart-bucketing, export and
-data-checking logic (79 unit tests, each run under six time zones, including ones that
+data-checking logic (91 unit tests, each run under six time zones, including ones that
 change their clocks), and the page itself in Chromium with a stand-in for the Trello
-client (223 checks, plus 49 more run against the zipped files served over HTTP). That covered showing and hiding completed items, the remembered
+client (307 checks, plus 66 more run against the zipped files served over HTTP). That covered showing and hiding completed items, the remembered
 choice, the empty and everything-complete states, Trello leaving checklists out or sharing
 only some of them, the setup and connect flow, rejected fields, failed and refused
 requests, narrow screens, and card names containing HTML. Due dates were checked for
@@ -229,6 +262,16 @@ on wide and narrow screens, and through the REST path. For the export, the page 
 Chromium, the real browser download was captured, and the file was opened with openpyxl and
 LibreOffice to check the rows, statuses, due dates as real dates, links, frozen header,
 filters, and awkward text (formulas, HTML, emoji, newlines, very long text).
+
+For the filter: the matching rules (capitals, spacing, whole names only, names that look like
+programming keywords such as `constructor`), each button keeping only its own checklists and
+switching straight from one to another, the list, header counts, chart, table and Excel
+file all agreeing with each other, the saved choice (and a saved name that no longer has a
+button), changing the names in `config.js` (and ignoring unusable settings), what is shown when
+nothing matches or a matching checklist is empty, keyboard use, and a narrow screen. It also copes with
+an older cached page: one with no filter buttons (a saved choice is ignored rather than leaving
+you stuck), the version 1.6 page with its single combined button (that button is replaced),
+and an older script file.
 
 For the chart, the number in every column was compared with a separate calculation of the
 same dates, and the tests were run with the checking code deliberately broken to confirm
