@@ -247,7 +247,7 @@
       g.appendChild(svgEl('rect', {
         'class': 'tl-hit',
         x: lay.left + lay.slot * i, y: CFG.top - 6,
-        width: lay.slot, height: lay.plotH + CFG.axis + 6
+        width: lay.slot, height: CFG.plotH + CFG.axis + 6
       }));
       if (bar.h > 0) {
         g.appendChild(svgEl('path', { 'class': 'tl-bar tl-bar-' + bucket.kind, d: columnPath(bar) }));

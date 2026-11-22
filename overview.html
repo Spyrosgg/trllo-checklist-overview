@@ -4,13 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>All checklist items</title>
-  <link rel="stylesheet" href="./overview.css?v=1.7" />
+  <link rel="stylesheet" href="./overview.css?v=1.9" />
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
 </head>
 <body>
   <header class="toolbar">
     <p id="summary" class="summary" aria-live="polite">Loading checklists…</p>
     <div class="actions">
+      <div class="toggle" role="group" aria-label="View">
+        <button id="btn-view-list" type="button" aria-pressed="true" disabled
+          title="Checklists grouped by list and card">List</button>
+        <button id="btn-view-week" type="button" aria-pressed="false" disabled
+          title="Items with a due date, laid out by day for one week">Calendar</button>
+      </div>
       <button id="btn-export" class="export" type="button" disabled
         title="Download what is shown as an Excel file">Export to Excel</button>
       <!-- One button per checklist name (Milestones, Actions) is added here by overview.js -->
@@ -45,12 +51,13 @@
 
   <main id="content" class="content"></main>
 
-  <footer class="version">Checklist Overview 1.7</footer>
+  <footer class="version">Checklist Overview 1.9</footer>
 
   <script src="./config.js"></script>
-  <script src="./checklist-model.js?v=1.7"></script>
-  <script src="./xlsx-export.js?v=1.7"></script>
-  <script src="./timeline-chart.js?v=1.7"></script>
-  <script src="./overview.js?v=1.7"></script>
+  <script src="./checklist-model.js?v=1.9"></script>
+  <script src="./xlsx-export.js?v=1.9"></script>
+  <script src="./timeline-chart.js?v=1.9"></script>
+  <script src="./week-calendar.js?v=1.9"></script>
+  <script src="./overview.js?v=1.9"></script>
 </body>
 </html>

@@ -36,7 +36,8 @@
       name: item.name,
       state: item.state === 'complete' ? 'complete' : 'incomplete',
       pos: item.pos,
-      due: normalizeDue(item.due)
+      due: normalizeDue(item.due),
+      member: (typeof item.idMember === 'string' && item.idMember) ? item.idMember : null
     };
   }
 
@@ -356,6 +357,20 @@
     return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
   }
 
+  // Cards in board order (list order, then position) when the lists are given, so
+  // items that share a date come out in the same order as on the page.
+  function boardOrder(cards, lists) {
+    var listIndex = {};
+    (lists || []).forEach(function (list, i) { listIndex[list.id] = i; });
+    function listRank(card) {
+      return hasOwn.call(listIndex, card.idList) ? listIndex[card.idList] : Number.MAX_SAFE_INTEGER;
+    }
+    return (cards || []).slice().sort(function (a, b) {
+      var d = listRank(a) - listRank(b);
+      return d !== 0 && !isNaN(d) ? d : byPos(a, b);
+    });
+  }
+
   // Groups every OPEN (not complete) check item on the given cards by when it is
   // due, for a single bar chart:
   //   'overdue'  open items whose date has passed (same rule as the red chips)
@@ -376,17 +391,7 @@
     var noneItems = [];
     var upcoming = [];
 
-    // Cards in board order (list order, then position) when the lists are given, so
-    // items that share a date come out in the same order as on the page.
-    var listIndex = {};
-    ((opts && opts.lists) || []).forEach(function (list, i) { listIndex[list.id] = i; });
-    function listRank(card) {
-      return Object.prototype.hasOwnProperty.call(listIndex, card.idList) ? listIndex[card.idList] : Number.MAX_SAFE_INTEGER;
-    }
-    var ordered = (cards || []).slice().sort(function (a, b) {
-      var d = listRank(a) - listRank(b);
-      return d !== 0 && !isNaN(d) ? d : byPos(a, b);
-    });
+    var ordered = boardOrder(cards, opts && opts.lists);
 
     ordered.forEach(function (card) {
       var cardOpen = 0;
@@ -480,10 +485,170 @@
     return { unit: unit, buckets: buckets, openItems: openItems, openCards: openCards };
   }
 
+  // ---- two weeks, by card and weekday (for the calendar) --------------------
+
+  // Lays out the check items that have a due date on a grid of weekdays:
+  // Monday to Friday of each of `weeks` weeks (two by default), one row for each card
+  // that has an item in them, one cell for each day.
+  //
+  //   startMs  any moment in the first week (it is moved back to that Monday)
+  //   opts     { lists, hideCompleted, members: { memberId: name }, weeks }
+  //
+  // Items due on a Saturday or Sunday have no column, so they are listed beside the grid
+  // (`weekend`) rather than dropped. The rest of what is not in the grid is also counted
+  // or listed beside it:
+  //   before   OPEN items due before the first day (`overdue` is true once that day has
+  //            come, since all of them are then past due)
+  //   after    how many OPEN items fall after the last week
+  //   noDate   items with no due date (respecting hideCompleted)
+  //   neighbours  the Monday of the nearest week either side that has items, or null
+  // Rows are in board order, like the list. A card with items only at the weekend, or only
+  // outside these weeks, has no row. Days are the viewer's local days; completed items are
+  // left out only when hideCompleted is true, and are never counted as overdue.
+  function calendarPlan(cards, byCard, startMs, nowMs, opts) {
+    var hideCompleted = !!(opts && opts.hideCompleted);
+    var members = (opts && opts.members) || {};
+    var weeks = Math.max(1, Math.min(8, Math.floor(Number(opts && opts.weeks)) || 2));
+    var start = startOfWeek(isFinite(startMs) ? startMs : nowMs);
+    var end = addDays(start, 7 * weeks);
+    var startDay = dayNumber(start);
+    var todayDay = dayNumber(nowMs);
+
+    function personName(id) {
+      var name = hasOwn.call(members, id) ? String(members[id] == null ? '' : members[id]).trim() : '';
+      return name || 'Unknown member';
+    }
+
+    var listNames = {};
+    ((opts && opts.lists) || []).forEach(function (list) { listNames[list.id] = list.name; });
+
+    var dated = [];     // every shown item with a due date, in board order
+    var noDate = [];
+    var cardInfo = {};  // card id to { name, url, list }
+    boardOrder(cards, opts && opts.lists).forEach(function (card, index) {
+      cardInfo[card.id] = {
+        index: index,
+        id: card.id,
+        name: card.name,
+        url: card.url || '',
+        list: hasOwn.call(listNames, card.idList) ? String(listNames[card.idList]) : ''
+      };
+      ((byCard && byCard[card.id]) || []).slice().sort(byPos).forEach(function (cl) {
+        cl.items.slice().sort(byPos).forEach(function (item) {
+          var complete = isComplete(item);
+          if (complete && hideCompleted) return;
+          var due = normalizeDue(item.due);
+          var ms = due ? Date.parse(due) : NaN;
+          var memberId = (typeof item.member === 'string' && item.member) ? item.member : null;
+          var rec = {
+            name: item.name, checklist: cl.name, card: card.name, cardId: card.id,
+            due: due, ms: ms, complete: complete,
+            overdue: !complete && !isNaN(ms) && ms < nowMs,
+            memberId: memberId,
+            member: memberId ? personName(memberId) : null
+          };
+          if (isNaN(ms)) noDate.push(rec); else dated.push(rec);
+        });
+      });
+    });
+
+    function bySoonest(a, b) { return a.ms - b.ms; }
+    dated.sort(bySoonest);
+
+    function publicRec(r) {
+      return {
+        name: r.name, checklist: r.checklist, card: r.card, cardId: r.cardId, due: r.due,
+        complete: r.complete, overdue: r.overdue, memberId: r.memberId, member: r.member
+      };
+    }
+
+    // The columns: Monday to Friday of each week.
+    var days = [];
+    var weekList = [];
+    var column = {};    // day number to column index; weekend days are absent
+    for (var w = 0; w < weeks; w++) {
+      var ws = addDays(start, 7 * w);
+      weekList.push({ start: ws, end: addDays(ws, 5) });   // end: the Saturday, so the last day is Friday
+      for (var d = 0; d < 5; d++) {
+        var ds = addDays(ws, d);
+        column[dayNumber(ds)] = days.length;
+        days.push({
+          start: ds,
+          end: addDays(ds, 1),
+          week: w,
+          today: dayNumber(ds) === todayDay
+        });
+      }
+    }
+
+    var rowsByCard = {};
+    var rows = [];
+    var before = [];
+    var weekend = [];
+    var afterCount = 0;
+    var inGrid = 0;
+    var overdueInGrid = 0;
+    var prevMs = null;    // latest dated item before the first day
+    var nextMs = null;    // earliest dated item after the last week
+
+    dated.forEach(function (r) {
+      if (r.ms < start) {
+        prevMs = r.ms;    // dated is sorted, so the last one wins
+        if (!r.complete) before.push(r);
+      } else if (r.ms >= end) {
+        if (nextMs === null) nextMs = r.ms;
+        if (!r.complete) afterCount += 1;
+      } else {
+        var col = column[dayNumber(r.ms)];
+        if (col === undefined) {
+          weekend.push(r);
+          return;
+        }
+        if (!hasOwn.call(rowsByCard, r.cardId)) {
+          var info = cardInfo[r.cardId];
+          var row = { id: info.id, name: info.name, url: info.url, list: info.list, cells: [], count: 0 };
+          for (var c = 0; c < days.length; c++) row.cells.push([]);
+          rowsByCard[r.cardId] = row;
+          rows.push(row);
+        }
+        rowsByCard[r.cardId].cells[col].push(publicRec(r));
+        rowsByCard[r.cardId].count += 1;
+        inGrid += 1;
+        if (r.overdue) overdueInGrid += 1;
+      }
+    });
+
+    // Board order: the order the cards came out of boardOrder.
+    rows.sort(function (a, b) { return cardInfo[a.id].index - cardInfo[b.id].index; });
+
+    return {
+      start: start,
+      end: end,
+      current: start === startOfWeek(nowMs),   // the two weeks that begin with this week
+      weeks: weekList,
+      rangeEnd: addDays(start, 7 * (weeks - 1) + 5),   // the Saturday after the last Friday
+      days: days,
+      rows: rows,
+      inGrid: inGrid,
+      overdueInGrid: overdueInGrid,
+      before: { count: before.length, overdue: start <= nowMs, items: before.map(publicRec) },
+      after: { count: afterCount },
+      weekend: { count: weekend.length, items: weekend.map(publicRec) },
+      noDate: { count: noDate.length, items: noDate.map(publicRec) },
+      neighbours: {
+        prev: prevMs === null ? null : startOfWeek(prevMs),
+        next: nextMs === null ? null : startOfWeek(nextMs)
+      }
+    };
+  }
+
   return {
     isComplete: isComplete,
     isOverdue: isOverdue,
     openTimeline: openTimeline,
+    calendarPlan: calendarPlan,
+    startOfWeek: startOfWeek,
+    addDays: addDays,
     fromCardData: fromCardData,
     fromRestChecklists: fromRestChecklists,
     buildView: buildView,

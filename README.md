@@ -3,7 +3,8 @@
 Adds a **Checklists** button to the top bar of a board. It opens a full-page view
 of every checklist item on every card, grouped by list, with **Show completed** and
 **Hide completed** buttons, a checklist filter (**All checklists**, **Milestones** or **Actions**),
-an **Export to Excel** button, and a chart of everything that is still open, by due date.
+an **Export to Excel** button, a chart of everything that is still open, by due date, and a
+**Calendar** view that shows two weeks at a time, Monday to Friday, with a row for each card.
 
 - Items are grouped by list (in board order), then card, then checklist, in the same
   order they have on the board.
@@ -14,11 +15,12 @@ an **Export to Excel** button, and a chart of everything that is still open, by 
   language. Open items whose date has passed are shown in red. Hover a date for the exact
   time.
 - A **chart of open items by due date** sits above the list (see below).
+- A **Calendar** button switches to a two-week planner, weekdays only, a row per card (see below).
 - A **filter** shows all checklists, only the ones called Milestones, or only the ones called
   Actions (see below).
 - Click a card name to open that card.
-- Your choices (completed items, the checklist filter, and the chart) are remembered for you
-  on that board.
+- Your choices (completed items, the checklist filter, the chart, and List or Calendar) are
+  remembered for you on that board.
 - **Export to Excel** downloads what is on screen as an `.xlsx` file (see below).
 - Read-only: it never changes your cards or checklists.
 
@@ -91,6 +93,49 @@ answers "how much is still to do, and when is it due?".
 - With a checklist filter on, the chart counts only items in the chosen checklists, and its
   subtitle says so.
 
+## Calendar: two weeks at a time, a row per card
+
+**Calendar**, at the top left of the buttons (next to **List**), swaps the list for a planner.
+It shows every check item that has a due date, on the day it is due.
+
+- **Rows are cards.** A card gets a row only if it has an item due on a weekday in the two weeks
+  shown, so you see just the cards that have something to deliver. Rows follow board order, as
+  the List does, and each shows its list and how many items it has in these two weeks. Click a
+  card's name to open it.
+- **Columns are the weekdays of two weeks, Monday to Friday**, with a heading over each week
+  and a heavier line between them. Today's column is tinted and carries the word **Today**
+  (nothing is marked when today is a Saturday or Sunday).
+- **There is no Saturday or Sunday column.** Items due at the weekend are not lost: they are
+  listed under the grid in **Due on a Saturday or Sunday**. A card whose only items fall at the
+  weekend has no row; its items are in that list.
+- **Milestones per card:** choose **Milestones** in the checklist buttons and the calendar shows
+  only the items in checklists called Milestones. With **All checklists** it shows every checklist's
+  items, and **Actions** shows only the Actions.
+- An item is a small button: click it to open its card. A **red box with `!`** means open and
+  overdue; a **green tick with a struck-through name** means completed. Neither is shown by
+  colour alone, and screen readers are told "Overdue" or "Completed". If the item is assigned to
+  someone, their name is shown on it. Hover an item for its checklist, card, exact due time and
+  person.
+- **The buttons move two weeks at a time.** **‹** and **›** go back and forward by two weeks
+  (Monday to Monday, fourteen days), and **Current 2 weeks** returns to the two weeks that begin
+  with this week. The heading says which dates you are on, and the line under it counts the
+  items, cards and overdue items. If the two weeks are empty, buttons offer the nearest two weeks
+  before or after that have items.
+- **Under the grid**: a count of open items due after these two weeks, and fold-outs for items
+  at the weekend, **Overdue from earlier weeks** (or **Open items due before these 2 weeks**, when
+  you are looking ahead), and **No due date**, since those items have no day.
+- **It follows the other buttons.** **Hide completed** leaves completed items off the grid (and a
+  card with nothing else in the two weeks loses its row), and the checklist filter leaves other
+  checklists off. The header counts and **Export to Excel** are unchanged.
+- The chart is hidden while you are in the Calendar and comes back in the List.
+- Your List or Calendar choice is remembered. The Calendar always opens on the current two weeks.
+- Days and weeks are your browser's local days, and the names of the days and months follow your
+  browser's language.
+- **Who is assigned** comes with the check items from the REST API. Names come from Trello's member
+  list for the board; if an assigned person is not in it, the page asks Trello for the board's
+  members once, and shows **Unknown member** if that fails. On a board where nothing is assigned
+  that extra request is never made.
+
 ## Export to Excel
 
 Click **Export to Excel**, at the top right of the Checklists page (next to Show completed
@@ -123,10 +168,12 @@ Check the browser's download or pop-up indicator and allow downloads for trello.
 | `manifest.json` | Name, description and icon. Which capabilities are on is set in the Trello admin portal, not in this file |
 | `index.html`, `client.js` | Connector: registers the board button |
 | `overview.html`, `overview.css`, `overview.js` | The page the button opens |
-| `checklist-model.js` | Grouping, sorting and filtering logic, and the rows for the export (no Trello calls) |
+| `checklist-model.js` | Grouping, sorting, filtering and week-layout logic, and the rows for the export (no Trello calls) |
 | `xlsx-export.js` | Writes the `.xlsx` file. No libraries needed |
 | `timeline-chart.js` | Draws the chart of open items (plain SVG). No libraries needed |
-| `config.js` | **Your API key goes here** |
+| `week-calendar.js` | Draws the weekly calendar. No libraries needed |
+| `config.example.js` | A template for `config.js`. Copy it to `config.js` and put your API key in the copy |
+| `config.js` | **Your own file: your API key goes here.** It is not in the zip, so updates cannot overwrite it |
 | `images/` | Button and Power-Up icons |
 
 ## Install
@@ -159,7 +206,7 @@ everyone on the board.
 2. On the same page, add the address your folder is hosted at to **Allowed origins**, for
    example `https://example.github.io`. Just the address, no folder path. The setup panel
    in the page shows the exact address to use.
-3. Open `config.js`, paste the key between the quotes after `appKey`, and save:
+3. Copy `config.example.js` to a new file called `config.js` (if you do not have one yet), paste the key between the quotes after `appKey`, and save:
 
    ```js
    window.CHECKLIST_OVERVIEW_CONFIG = {
@@ -168,7 +215,7 @@ everyone on the board.
      appAuthor: ''
    };
    ```
-4. Upload `config.js` again, hard-refresh the board, open **Checklists**, and click
+4. Upload `config.js`, hard-refresh the board, open **Checklists**, and click
    **Connect to Trello**. It asks for **read** access only. Each person who uses the
    Power-Up does this once.
 
@@ -190,13 +237,15 @@ there really are none.
 ## Updating
 
 Upload **every file** in the folder again, including any new ones (version 1.1 added
-`xlsx-export.js`, version 1.4 added `timeline-chart.js`), then reload the board with a hard refresh (Ctrl+Shift+R, or Cmd+Shift+R
+`xlsx-export.js`, version 1.4 added `timeline-chart.js`, version 1.8 added `week-calendar.js`), then reload the board with a hard refresh (Ctrl+Shift+R, or Cmd+Shift+R
 on a Mac) and reopen **Checklists**. Trello and your host both cache these files, and some
-hosts, GitHub Pages for one, can take a few minutes to publish. Keep your own `config.js`
-rather than overwriting it with the blank one from the zip.
+hosts, GitHub Pages for one, can take a few minutes to publish. The zip deliberately has no
+`config.js`, only `config.example.js`, so uploading its files can never replace your key.
+Your `config.js` stays as it is. (Before 1.8 the zip held a blank `config.js`, and uploading
+it erased the key.)
 
 To check you are on the latest files, scroll to the bottom of the Checklists page. It shows
-`Checklist Overview 1.7`. If that line is missing or shows an older number, you are still
+`Checklist Overview 1.9`. If that line is missing or shows an older number, you are still
 being served older files. If you ever edit the code, change the `?v=` number on the script
 and style links in `index.html` and `overview.html`, and in `client.js`, so browsers fetch
 the new files.
@@ -225,24 +274,43 @@ the key's **Allowed origins**.
 If items are open and it is still missing, you are probably being served older files, or
 `timeline-chart.js` (new in 1.4) was not uploaded. The list, Export and the buttons keep
 working without it, so this is easy to miss. Check the bottom of the page says
-`Checklist Overview 1.7`, and upload every file.
+`Checklist Overview 1.9`, and upload every file.
+
+**The Calendar button is greyed out, or missing.** It is greyed out when the page cannot find
+`week-calendar.js` (new in 1.8) or an up-to-date `checklist-model.js`: upload every file and
+hard-refresh. It is missing when you are being served an older `overview.html`. The List keeps
+working either way. If the calendar ever fails to draw, the page falls back to the List.
+
+**A card is missing from the Calendar.** A card has a row only if it has a dated item due on a
+weekday in the two weeks shown (and the item is not hidden by Hide completed or by the checklist
+buttons). Items due on a Saturday or Sunday, with no date, or outside the two weeks are listed
+under the grid, or on another two weeks. Use **‹** and **›**, or the buttons that appear when the
+two weeks are empty.
+
+**An item says "Unknown member".** It is assigned to someone Trello did not name (they may have left
+the board, or the member request failed). The name is only a small label on the item; the rows are
+cards, not people.
 
 **I can see Checklists but not Export to Excel.** The export button is inside the page that
 Checklists opens, at the top right. If it is missing there, you are being served older files:
-scroll to the bottom of that page and look for `Checklist Overview 1.7`.
+scroll to the bottom of that page and look for `Checklist Overview 1.9`.
 
 ## Limits
 
 - Archived cards are not shown.
 - Checklists with no items, and cards with no checklists, are left out.
-- Items are shown in the order Trello stores them. Assigned members on individual check
-  items are not shown.
+- Items are shown in the order Trello stores them. The List does not show who a check item is
+  assigned to; the Calendar shows the name on the item.
 - Due dates are shown in the time zone your browser is set to. Someone in another time zone
   may see a different day for an item due close to midnight.
 - The list is a snapshot taken when you open the page. Close and reopen it to refresh.
 - The chart counts check items that are open. It does not look at the dates on cards
   themselves, only the due dates on the check items.
 - Weeks start on Monday, whatever your region's calendar says.
+- The Calendar shows two weeks at a time, Monday to Friday, with no hours of the day. It moves in
+  steps of two weeks, and the number of weeks and the days shown are fixed. Items with no due date
+  are not on the grid, and items due at the weekend are only in the fold-out under it. Rows are
+  cards, not people.
 - The filter matches whole checklist names only, one name at a time. It cannot match part of
   a name or show two names together, and it filters on checklist names, not on card names or labels.
 - In a narrow window there is not room to name every column, so some date labels are left
@@ -251,9 +319,9 @@ scroll to the bottom of that page and look for `Checklist Overview 1.7`.
 ## What has and has not been tested
 
 Tested: the grouping, ordering, filtering, due-date, chart-bucketing, export and
-data-checking logic (91 unit tests, each run under six time zones, including ones that
+data-checking logic (124 unit tests, each run under six time zones, including ones that
 change their clocks), and the page itself in Chromium with a stand-in for the Trello
-client (307 checks, plus 66 more run against the zipped files served over HTTP). That covered showing and hiding completed items, the remembered
+client (428 checks, plus 102 more run against the zipped files served over HTTP). That covered showing and hiding completed items, the remembered
 choice, the empty and everything-complete states, Trello leaving checklists out or sharing
 only some of them, the setup and connect flow, rejected fields, failed and refused
 requests, narrow screens, and card names containing HTML. Due dates were checked for
@@ -285,10 +353,28 @@ so it cannot take the page down: with an older cached `overview.html`, a missing
 `timeline-chart.js`, an older `checklist-model.js`, or a chart that throws, the list, the buttons and the
 export were checked still to work, with the chart simply left out.
 
+For the calendar: which weekday and which of the two weeks each item lands on (the first and last
+moment of each week, and every two-week window of 2026 and early 2027 with items just after
+midnight, at noon and just before the next midnight, in time zones that change their clocks),
+Saturday and Sunday items going to the fold-out rather than disappearing, rows being the cards
+that have a weekday item (in board order, with their list and count, none for a card with only
+weekend or out-of-range items, separate rows for cards with the same name), overdue and
+completed items, the fold-outs for earlier-overdue, weekend and undated items, the nearest two
+weeks with items, the buttons moving by two weeks and keeping keyboard focus, Hide completed
+and the checklist filter both applying, the saved choice, opening on the current two weeks,
+a Sunday (no day marked Today), REST data with and without a member request (and a failed one),
+names containing HTML, long unbroken names, a narrow screen, another language, and falling back
+to the List if the calendar cannot be drawn. The tests were run with the code deliberately broken
+in 31 different ways, and each one was caught. An older cached page, a missing `week-calendar.js`,
+an older `checklist-model.js` and a calendar script that throws were each checked to leave the List
+working. The checking also began failing on any error the browser logs, which found a mistake that
+had been in the chart since 1.4: its invisible hover area had no height, so hovering or tabbing only
+worked on the thin bar itself. That is fixed.
+
 Not tested: a real Trello board, and Microsoft Excel itself. The stand-in for Trello follows
 Trello's documentation, and the REST address, key and token handling follow its REST API
-client guide, but the real authorization window, Trello's responses (in particular that the check-item data includes each item's `due`, as
-Trello's community documentation says) and whether its iframe
+client guide, but the real authorization window, Trello's responses (in particular that the check-item data includes each item's `due` and `idMember`, as
+Trello's community documentation says, and that `t.board('members')` names the board's members) and whether its iframe
 lets the download through are the parts to check first when you install it. Trello
 announced in 2020 that it allows downloads started by a click in Power-Up iframes, which is
 how the export button works. The chart has only been seen in Chromium: Firefox and Safari

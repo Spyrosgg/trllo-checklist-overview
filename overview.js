@@ -1,4 +1,4 @@
-/* global TrelloPowerUp, ChecklistModel, XlsxExport, TimelineChart */
+/* global TrelloPowerUp, ChecklistModel, XlsxExport, TimelineChart, WeekCalendar */
 var config = window.CHECKLIST_OVERVIEW_CONFIG || {};
 
 var t = config.appKey
@@ -12,6 +12,7 @@ var t = config.appKey
 var HIDE_PREF_KEY = 'hideCompleted';
 var CHART_PREF_KEY = 'chartHidden';
 var FILTER_PREF_KEY = 'checklistFilter';   // the one checklist name being shown, or '' for all
+var VIEW_PREF_KEY = 'overviewLayout';      // 'list' or 'week'
 
 // Capitals and extra spaces do not matter when comparing checklist names.
 function nameKey(name) {
@@ -57,6 +58,11 @@ var state = {
   cardStats: null,    // { expected, found } check items, from Trello's card data
   chartHidden: false, // the person has collapsed the chart
   timeline: null,     // open items grouped by due date, for the chart
+  layout: 'list',     // 'list' or 'week' (the calendar)
+  calendar: null,     // what the calendar is showing
+  calendarStart: null, // Monday 00:00 of the first of the two weeks it shows
+  boardMembers: {},   // member id to name, from Trello
+  restMembers: {},    // the same, from the REST API
   chartWidth: 0,
   view: null          // what is currently on screen; the Excel export reads this
 };
@@ -70,6 +76,8 @@ var els = {
   hide: document.getElementById('btn-hide'),
   // Detached stand-ins when an older overview.html has no filter buttons.
   allLists: document.getElementById('btn-all-lists') || document.createElement('button'),
+  viewList: document.getElementById('btn-view-list') || document.createElement('button'),
+  viewWeek: document.getElementById('btn-view-week') || document.createElement('button'),
   // If an older overview.html is served (cached or only partly uploaded), the button
   // is missing. A detached stand-in keeps the rest of the page working.
   exportBtn: document.getElementById('btn-export') || document.createElement('button'),
@@ -121,18 +129,20 @@ function fetchChecklistsViaRest() {
     var boardId = results[1].id;
     if (!token) throw restError('unauthorized');
 
-    var url = 'https://api.trello.com/1/boards/' + encodeURIComponent(boardId) + '/checklists' +
-      // checkItem_fields=all so each item's due date comes back with it.
-      '?checkItems=all&checkItem_fields=all&fields=name,idCard,pos' +
-      '&key=' + encodeURIComponent(config.appKey) +
-      '&token=' + encodeURIComponent(token);
+    var base = 'https://api.trello.com/1/boards/' + encodeURIComponent(boardId);
+    var auth = '&key=' + encodeURIComponent(config.appKey) + '&token=' + encodeURIComponent(token);
+    // checkItem_fields=all so each item's due date and assignee come back with it.
+    var url = base + '/checklists?checkItems=all&checkItem_fields=all&fields=name,idCard,pos' + auth;
 
     return fetch(url).then(function (res) {
       if (res.status === 401) throw restError('unauthorized');
       if (!res.ok) throw restError('http', 'Trello answered with status ' + res.status + '.');
       return res.json();
+    }).then(function (checklists) {
+      var byCard = ChecklistModel.fromRestChecklists(checklists);
+      return fetchMissingMembers(base, auth, byCard).then(function () { return byCard; });
     });
-  }).then(ChecklistModel.fromRestChecklists);
+  });
 }
 
 // Resolves to a byCard map when REST data is available, or null when it isn't
@@ -150,6 +160,67 @@ function tryRest() {
     state.restError = err;
     return null;
   });
+}
+
+// { memberId: name } from a list of Trello members (either source); names that are
+// missing are left out, and the calendar then says "Unknown member".
+function membersMap(list) {
+  var map = {};
+  (Array.isArray(list) ? list : []).forEach(function (m) {
+    if (!m || typeof m.id !== 'string') return;
+    var name = String(m.fullName || m.username || '').trim();
+    if (name) map[m.id] = name;
+  });
+  return map;
+}
+
+// The calendar names the people items are assigned to. Trello's own member list is
+// used when it has them; only if an assignee is not in it is the board's member list
+// fetched, so boards that assign nobody make no extra request. It is an extra: if it
+// fails, the items still show and the person is called "Unknown member".
+function fetchMissingMembers(base, auth, byCard) {
+  var known = memberNames();
+  var missing = false;
+  Object.keys(byCard).forEach(function (cardId) {
+    byCard[cardId].forEach(function (cl) {
+      cl.items.forEach(function (item) {
+        if (item.member && !Object.prototype.hasOwnProperty.call(known, item.member)) missing = true;
+      });
+    });
+  });
+  if (!missing) return Promise.resolve();
+
+  return Promise.resolve().then(function () {
+    return fetch(base + '/members?fields=fullName,username' + auth);
+  }).then(function (res) {
+    return res && res.ok ? res.json() : [];
+  }).then(function (list) {
+    state.restMembers = membersMap(list);
+  }).catch(function () {});
+}
+
+function memberNames() {
+  var out = {};
+  [state.boardMembers, state.restMembers].forEach(function (src) {
+    Object.keys(src || {}).forEach(function (id) { out[id] = src[id]; });
+  });
+  return out;
+}
+
+function loadBoardMembers() {
+  return Promise.resolve().then(function () {
+    return t.board('members');
+  }).then(function (board) {
+    return membersMap(board && board.members);
+  }).catch(function () { return {}; });
+}
+
+// The calendar needs its button, its drawing file and the model's week layout. An older
+// cached page or a half-uploaded folder may lack one; then there is only the list.
+function calendarAvailable() {
+  return !!document.getElementById('btn-view-week') &&
+    typeof WeekCalendar !== 'undefined' &&
+    typeof ChecklistModel.calendarPlan === 'function';
 }
 
 function loadCards() {
@@ -172,7 +243,9 @@ function load() {
     t.get('member', 'private', HIDE_PREF_KEY, false),
     t.board('name'),
     t.get('member', 'private', CHART_PREF_KEY, false),
-    t.get('member', 'private', FILTER_PREF_KEY, false)
+    t.get('member', 'private', FILTER_PREF_KEY, false),
+    t.get('member', 'private', VIEW_PREF_KEY, false),
+    loadBoardMembers()
   ]).then(function (results) {
     state.lists = results[0] || [];
     state.cards = results[1] || [];
@@ -182,6 +255,10 @@ function load() {
     // A saved choice is honoured only if this page has the buttons to undo it, which an
     // older cached overview.html would not.
     state.filter = document.getElementById('btn-all-lists') ? filterNameFor(results[5]) : '';
+    state.layout = results[6] === 'week' && calendarAvailable() ? 'week' : 'list';
+    state.boardMembers = results[7] || {};
+    state.restMembers = {};
+    state.calendarStart = ChecklistModel.startOfWeek ? ChecklistModel.startOfWeek(Date.now()) : null;
 
     return tryRest().then(function (restByCard) {
       if (restByCard) {
@@ -213,6 +290,12 @@ function updateToggle() {
   els.show.setAttribute('aria-pressed', String(!state.hideCompleted));
   els.hide.setAttribute('aria-pressed', String(state.hideCompleted));
 
+  var canCalendar = calendarAvailable();
+  els.viewList.disabled = !canCalendar;
+  els.viewWeek.disabled = !canCalendar;
+  els.viewList.setAttribute('aria-pressed', String(state.layout !== 'week'));
+  els.viewWeek.setAttribute('aria-pressed', String(state.layout === 'week'));
+
   els.allLists.disabled = false;
   els.allLists.setAttribute('aria-pressed', String(state.filter === ''));
   filterButtons.forEach(function (fb) {
@@ -236,6 +319,8 @@ function disableControls() {
   els.chartPanel.hidden = true;
   els.show.disabled = true;
   els.hide.disabled = true;
+  els.viewList.disabled = true;
+  els.viewWeek.disabled = true;
   els.allLists.disabled = true;
   filterButtons.forEach(function (fb) { fb.node.disabled = true; });
   els.exportBtn.disabled = true;
@@ -381,6 +466,7 @@ function render() {
   els.exportBtn.disabled = view.totals.shown === 0;
   drawChart();
   clear(els.content);
+  els.content.className = 'content' + (state.layout === 'week' ? ' is-wide' : '');
 
   if (view.totals.items === 0 && state.filter && ChecklistModel.checklistNames(state.byCard).length > 0) {
     els.content.appendChild(noMatchPanel());
@@ -404,6 +490,8 @@ function render() {
     ]));
     return;
   }
+
+  if (state.layout === 'week' && drawCalendar()) return;
 
   view.sections.forEach(function (section) {
     var heading = el('h3', 'list-heading', section.list.name);
@@ -472,8 +560,9 @@ function showConnect() {
       ? ['On the same page, add this address to ', { code: 'Allowed origins' }, ': ', { code: origin }]
       : ['On the same page, add the address this folder is hosted at to ', { code: 'Allowed origins' }, '.']));
     steps.appendChild(stepItem([
-      'In the Power-Up folder, open ', { code: 'config.js' }, ', paste the key between the quotes after ',
-      { code: 'appKey' }, ', and upload the file again.'
+      'In the Power-Up folder, copy ', { code: 'config.example.js' }, ' to ', { code: 'config.js' },
+      ' (or open it, if you already have one), paste the key between the quotes after ',
+      { code: 'appKey' }, ', and upload ', { code: 'config.js' }, '.'
     ]));
     steps.appendChild(stepItem([
       'Refresh the board (Ctrl+Shift+R), open ', { code: 'Checklists' }, ' and choose ',
@@ -564,6 +653,114 @@ els.allLists.addEventListener('click', function () { setFilter(''); });
     filterButtons.push({ name: name, node: node });
   });
 })();
+
+// ---------------------------------------------------------------------------
+// Calendar: the items that have a due date, two weeks at a time, a row per card
+// ---------------------------------------------------------------------------
+
+var CALENDAR_STEP_DAYS = 14;   // the calendar moves two weeks at a time
+
+function localDateAttr(ms) {
+  var d = new Date(ms);
+  function two(n) { return (n < 10 ? '0' : '') + n; }
+  return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate());
+}
+
+// A range of days without the year, for the heading over each week.
+function shortRange(startMs, endMs) {
+  var a = new Date(startMs);
+  var b = new Date(lastDay(endMs));
+  var opts = { day: 'numeric', month: 'short' };
+  if (typeof Intl !== 'undefined' && Intl.DateTimeFormat.prototype.formatRange) {
+    return new Intl.DateTimeFormat(undefined, opts).formatRange(a, b);
+  }
+  return a.toLocaleDateString(undefined, opts) + ' – ' + b.toLocaleDateString(undefined, opts);
+}
+
+// Dates are written in the viewer's own language and time zone.
+var weekFormat = {
+  // "23 Nov – 4 Dec 2026"; `end` is the day after the last one shown.
+  range: function (start, end) { return dayRange(start, end); },
+  weekRange: shortRange,
+  weekday: function (ms) { return new Date(ms).toLocaleDateString(undefined, { weekday: 'short' }); },
+  dayOfMonth: function (ms) { return new Date(ms).toLocaleDateString(undefined, { day: 'numeric' }); },
+  firstOfMonth: function (ms) { return new Date(ms).getDate() === 1; },
+  month: function (ms) { return new Date(ms).toLocaleDateString(undefined, { month: 'short' }); },
+  dayFull: function (ms) {
+    return new Date(ms).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  },
+  dateAttr: localDateAttr,
+  dueShort: function (iso) { return formatDueShort(iso); },
+  weekOf: function (ms) { return 'week of ' + formatDueShort(new Date(ms).toISOString()); },
+  // The hover text of an item: everything the small chip leaves out.
+  itemTitle: function (rec) {
+    var lines = [rec.name, rec.checklist + ' · ' + rec.card];
+    if (rec.due) lines.push((rec.overdue ? 'Overdue: ' : 'Due: ') + formatDueFull(rec.due));
+    else lines.push('No due date');
+    if (rec.member) lines.push('Assigned to ' + rec.member);
+    if (rec.complete) lines.push('Completed');
+    return lines.join('\n');
+  }
+};
+
+var calendarHandlers = {
+  onPrev: function () { moveCalendar(ChecklistModel.addDays(state.calendarStart, -CALENDAR_STEP_DAYS)); },
+  onNext: function () { moveCalendar(ChecklistModel.addDays(state.calendarStart, CALENDAR_STEP_DAYS)); },
+  onCurrent: function () { moveCalendar(ChecklistModel.startOfWeek(Date.now())); },
+  onGoto: function (ms) { moveCalendar(ChecklistModel.startOfWeek(ms), true); },
+  onOpenCard: function (card) { openCard(card); }
+};
+
+// Draws the calendar in the content area. Returns false if it could not, in which case
+// the page goes back to the list rather than showing nothing.
+function drawCalendar() {
+  try {
+    if (state.calendarStart === null || isNaN(state.calendarStart)) state.calendarStart = ChecklistModel.startOfWeek(Date.now());
+    var plan = ChecklistModel.calendarPlan(state.cards, visibleByCard(), state.calendarStart, Date.now(), {
+      lists: state.lists,
+      hideCompleted: state.hideCompleted,
+      members: memberNames(),
+      weeks: 2
+    });
+    WeekCalendar.render(els.content, plan, weekFormat, calendarHandlers);
+    state.calendar = plan;
+    return true;
+  } catch (err) {
+    if (typeof console !== 'undefined' && console.warn) console.warn('Checklist Overview: calendar not drawn.', err);
+    state.layout = 'list';
+    state.calendar = null;
+    clear(els.content);
+    els.content.className = 'content';
+    updateToggle();
+    drawChart();   // it was left out while the calendar was expected; the list has room for it
+    return false;
+  }
+}
+
+// Changes the two weeks shown. Only the calendar is redrawn, so the buttons that were just
+// pressed keep keyboard focus.
+function moveCalendar(startMs, refocus) {
+  state.calendarStart = startMs;
+  if (!drawCalendar()) { render(); return; }
+  if (refocus && els.content.firstChild) {
+    var heading = els.content.querySelector('.wk-title');
+    if (heading) heading.focus();
+  }
+}
+
+function setLayout(layout) {
+  if (state.layout === layout) return;
+  if (layout === 'week' && !calendarAvailable()) return;
+  state.layout = layout;
+  // Opening the calendar starts on the current week.
+  if (layout === 'week') state.calendarStart = ChecklistModel.startOfWeek(Date.now());
+  render();
+  // Save what is on screen: if the calendar could not be drawn, the list is what stayed.
+  t.set('member', 'private', VIEW_PREF_KEY, state.layout).catch(function () {});
+}
+
+els.viewList.addEventListener('click', function () { setLayout('list'); });
+els.viewWeek.addEventListener('click', function () { setLayout('week'); });
 
 // ---------------------------------------------------------------------------
 // Chart: every open item on the board, grouped by due date
@@ -731,6 +928,12 @@ function drawChart() {
 }
 
 function paintTimeline() {
+  // The calendar is the by-date view, and it needs the room, so the chart waits in the list view.
+  if (state.layout === 'week') {
+    els.chartPanel.hidden = true;
+    return;
+  }
+
   var timeline = ChecklistModel.openTimeline(state.cards, visibleByCard(), Date.now(), { lists: state.lists });
   state.timeline = timeline;
 
