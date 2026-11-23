@@ -13,7 +13,7 @@ var capabilities = {
       callback: function (t) {
         return t.modal({
           title: 'All checklist items',
-          url: './overview.html?v=1.9',
+          url: './overview.html?v=1.10',
           fullscreen: true,
           accentColor: 'blue'
         });

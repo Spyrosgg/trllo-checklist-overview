@@ -60,7 +60,7 @@ var state = {
   timeline: null,     // open items grouped by due date, for the chart
   layout: 'list',     // 'list' or 'week' (the calendar)
   calendar: null,     // what the calendar is showing
-  calendarStart: null, // Monday 00:00 of the first of the two weeks it shows
+  calendarStart: null, // Monday 00:00 of the first of the two weeks it shows (it moves one week at a time)
   boardMembers: {},   // member id to name, from Trello
   restMembers: {},    // the same, from the REST API
   chartWidth: 0,
@@ -655,10 +655,10 @@ els.allLists.addEventListener('click', function () { setFilter(''); });
 })();
 
 // ---------------------------------------------------------------------------
-// Calendar: the items that have a due date, two weeks at a time, a row per card
+// Calendar: the items that have a due date, two weeks shown, a row per card
 // ---------------------------------------------------------------------------
 
-var CALENDAR_STEP_DAYS = 14;   // the calendar moves two weeks at a time
+var CALENDAR_STEP_DAYS = 7;    // two weeks are shown, and the arrows move one week
 
 function localDateAttr(ms) {
   var d = new Date(ms);
@@ -737,7 +737,7 @@ function drawCalendar() {
   }
 }
 
-// Changes the two weeks shown. Only the calendar is redrawn, so the buttons that were just
+// Changes the weeks shown. Only the calendar is redrawn, so the buttons that were just
 // pressed keep keyboard focus.
 function moveCalendar(startMs, refocus) {
   state.calendarStart = startMs;

@@ -152,12 +152,12 @@
   function build(container) {
     var ui = { handlers: null };
     ui.root = el('section', 'wk');
-    ui.root.setAttribute('aria-label', 'Calendar, two weeks at a time');
+    ui.root.setAttribute('aria-label', 'Calendar, two weeks shown');
 
     var nav = el('div', 'wk-nav');
     var steps = el('div', 'toggle wk-steps');
     steps.setAttribute('role', 'group');
-    steps.setAttribute('aria-label', 'Change the two weeks shown');
+    steps.setAttribute('aria-label', 'Change the weeks shown');
 
     function stepButton(label, text, name) {
       var b = el('button', null, text);
@@ -169,9 +169,9 @@
       steps.appendChild(b);
       return b;
     }
-    stepButton('Previous 2 weeks', '‹', 'onPrev');
-    ui.current = stepButton('Current 2 weeks', 'Current 2 weeks', 'onCurrent');
-    stepButton('Next 2 weeks', '›', 'onNext');
+    stepButton('Previous week', '‹', 'onPrev');
+    ui.current = stepButton('This week', 'This week', 'onCurrent');
+    stepButton('Next week', '›', 'onNext');
     nav.appendChild(steps);
 
     var titles = el('div', 'wk-titles');
@@ -217,7 +217,7 @@
         ? 'Nothing is due on a weekday in these 2 weeks.'
         : 'Nothing is due in these 2 weeks.');
       var n = plan.neighbours;
-      [['prev', 'Go to the last 2 weeks with items'], ['next', 'Go to the next 2 weeks with items']].forEach(function (pair) {
+      [['prev', 'Go to the last week with items'], ['next', 'Go to the next week with items']].forEach(function (pair) {
         var target = n[pair[0]];
         if (target === null || target === undefined) return;
         var go = el('button', 'wk-go', pair[1] + ' (' + fmt.weekOf(target) + ')');

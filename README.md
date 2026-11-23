@@ -4,7 +4,7 @@ Adds a **Checklists** button to the top bar of a board. It opens a full-page vie
 of every checklist item on every card, grouped by list, with **Show completed** and
 **Hide completed** buttons, a checklist filter (**All checklists**, **Milestones** or **Actions**),
 an **Export to Excel** button, a chart of everything that is still open, by due date, and a
-**Calendar** view that shows two weeks at a time, Monday to Friday, with a row for each card.
+**Calendar** view that shows two weeks, Monday to Friday, with a row for each card, and moves one week at a time.
 
 - Items are grouped by list (in board order), then card, then checklist, in the same
   order they have on the board.
@@ -93,7 +93,7 @@ answers "how much is still to do, and when is it due?".
 - With a checklist filter on, the chart counts only items in the chosen checklists, and its
   subtitle says so.
 
-## Calendar: two weeks at a time, a row per card
+## Calendar: two weeks shown, a row per card
 
 **Calendar**, at the top left of the buttons (next to **List**), swaps the list for a planner.
 It shows every check item that has a due date, on the day it is due.
@@ -116,11 +116,12 @@ It shows every check item that has a due date, on the day it is due.
   colour alone, and screen readers are told "Overdue" or "Completed". If the item is assigned to
   someone, their name is shown on it. Hover an item for its checklist, card, exact due time and
   person.
-- **The buttons move two weeks at a time.** **‹** and **›** go back and forward by two weeks
-  (Monday to Monday, fourteen days), and **Current 2 weeks** returns to the two weeks that begin
-  with this week. The heading says which dates you are on, and the line under it counts the
-  items, cards and overdue items. If the two weeks are empty, buttons offer the nearest two weeks
-  before or after that have items.
+- **The arrows move one week at a time.** Two weeks are always shown, and **‹** and **›** slide
+  them back or forward by one week, so the week you were looking at stays on screen: pressing **›**
+  turns the second week into the first and brings a new week in on the right. **This week**
+  returns to this week and next week. The heading says which dates you are on, and the line under
+  it counts the items, cards and overdue items. If the two weeks are empty, buttons offer the
+  nearest week before or after that has items.
 - **Under the grid**: a count of open items due after these two weeks, and fold-outs for items
   at the weekend, **Overdue from earlier weeks** (or **Open items due before these 2 weeks**, when
   you are looking ahead), and **No due date**, since those items have no day.
@@ -128,7 +129,7 @@ It shows every check item that has a due date, on the day it is due.
   card with nothing else in the two weeks loses its row), and the checklist filter leaves other
   checklists off. The header counts and **Export to Excel** are unchanged.
 - The chart is hidden while you are in the Calendar and comes back in the List.
-- Your List or Calendar choice is remembered. The Calendar always opens on the current two weeks.
+- Your List or Calendar choice is remembered. The Calendar always opens on this week and next.
 - Days and weeks are your browser's local days, and the names of the days and months follow your
   browser's language.
 - **Who is assigned** comes with the check items from the REST API. Names come from Trello's member
@@ -245,7 +246,7 @@ Your `config.js` stays as it is. (Before 1.8 the zip held a blank `config.js`, a
 it erased the key.)
 
 To check you are on the latest files, scroll to the bottom of the Checklists page. It shows
-`Checklist Overview 1.9`. If that line is missing or shows an older number, you are still
+`Checklist Overview 1.10`. If that line is missing or shows an older number, you are still
 being served older files. If you ever edit the code, change the `?v=` number on the script
 and style links in `index.html` and `overview.html`, and in `client.js`, so browsers fetch
 the new files.
@@ -274,7 +275,7 @@ the key's **Allowed origins**.
 If items are open and it is still missing, you are probably being served older files, or
 `timeline-chart.js` (new in 1.4) was not uploaded. The list, Export and the buttons keep
 working without it, so this is easy to miss. Check the bottom of the page says
-`Checklist Overview 1.9`, and upload every file.
+`Checklist Overview 1.10`, and upload every file.
 
 **The Calendar button is greyed out, or missing.** It is greyed out when the page cannot find
 `week-calendar.js` (new in 1.8) or an up-to-date `checklist-model.js`: upload every file and
@@ -284,7 +285,7 @@ working either way. If the calendar ever fails to draw, the page falls back to t
 **A card is missing from the Calendar.** A card has a row only if it has a dated item due on a
 weekday in the two weeks shown (and the item is not hidden by Hide completed or by the checklist
 buttons). Items due on a Saturday or Sunday, with no date, or outside the two weeks are listed
-under the grid, or on another two weeks. Use **‹** and **›**, or the buttons that appear when the
+under the grid, or in another week. Use **‹** and **›**, or the buttons that appear when the
 two weeks are empty.
 
 **An item says "Unknown member".** It is assigned to someone Trello did not name (they may have left
@@ -293,7 +294,7 @@ cards, not people.
 
 **I can see Checklists but not Export to Excel.** The export button is inside the page that
 Checklists opens, at the top right. If it is missing there, you are being served older files:
-scroll to the bottom of that page and look for `Checklist Overview 1.9`.
+scroll to the bottom of that page and look for `Checklist Overview 1.10`.
 
 ## Limits
 
@@ -307,8 +308,8 @@ scroll to the bottom of that page and look for `Checklist Overview 1.9`.
 - The chart counts check items that are open. It does not look at the dates on cards
   themselves, only the due dates on the check items.
 - Weeks start on Monday, whatever your region's calendar says.
-- The Calendar shows two weeks at a time, Monday to Friday, with no hours of the day. It moves in
-  steps of two weeks, and the number of weeks and the days shown are fixed. Items with no due date
+- The Calendar shows two weeks, Monday to Friday, with no hours of the day. It moves one week at
+  a time, and the number of weeks shown and the days shown are fixed. Items with no due date
   are not on the grid, and items due at the weekend are only in the fold-out under it. Rows are
   cards, not people.
 - The filter matches whole checklist names only, one name at a time. It cannot match part of
@@ -319,9 +320,9 @@ scroll to the bottom of that page and look for `Checklist Overview 1.9`.
 ## What has and has not been tested
 
 Tested: the grouping, ordering, filtering, due-date, chart-bucketing, export and
-data-checking logic (124 unit tests, each run under six time zones, including ones that
+data-checking logic (125 unit tests, each run under six time zones, including ones that
 change their clocks), and the page itself in Chromium with a stand-in for the Trello
-client (428 checks, plus 102 more run against the zipped files served over HTTP). That covered showing and hiding completed items, the remembered
+client (441 checks, plus 106 more run against the zipped files served over HTTP). That covered showing and hiding completed items, the remembered
 choice, the empty and everything-complete states, Trello leaving checklists out or sharing
 only some of them, the setup and connect flow, rejected fields, failed and refused
 requests, narrow screens, and card names containing HTML. Due dates were checked for
@@ -360,12 +361,12 @@ Saturday and Sunday items going to the fold-out rather than disappearing, rows b
 that have a weekday item (in board order, with their list and count, none for a card with only
 weekend or out-of-range items, separate rows for cards with the same name), overdue and
 completed items, the fold-outs for earlier-overdue, weekend and undated items, the nearest two
-weeks with items, the buttons moving by two weeks and keeping keyboard focus, Hide completed
+weeks with items, the arrows moving one week at a time (and the week the two windows share looking the same in both) and keeping keyboard focus, Hide completed
 and the checklist filter both applying, the saved choice, opening on the current two weeks,
 a Sunday (no day marked Today), REST data with and without a member request (and a failed one),
 names containing HTML, long unbroken names, a narrow screen, another language, and falling back
 to the List if the calendar cannot be drawn. The tests were run with the code deliberately broken
-in 31 different ways, and each one was caught. An older cached page, a missing `week-calendar.js`,
+in 35 different ways, and each one was caught. An older cached page, a missing `week-calendar.js`,
 an older `checklist-model.js` and a calendar script that throws were each checked to leave the List
 working. The checking also began failing on any error the browser logs, which found a mistake that
 had been in the chart since 1.4: its invisible hover area had no height, so hovering or tabbing only
